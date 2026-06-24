@@ -1,0 +1,10 @@
+# Minimal local values placeholder for the kind milestone.
+# Keep this file synchronized with the pinned agentgateway v1.3.1 Helm values before a production-style run.
+gateway:
+  service:
+    type: NodePort
+    ports:
+      http:
+        nodePort: 30080
+      https:
+        nodePort: 30443

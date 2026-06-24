@@ -1,0 +1,13 @@
+apiVersion: gateway.agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: ollama-local
+  namespace: agentgateway-demo
+spec:
+  ai:
+    provider:
+      openai:
+        host: host.docker.internal
+        port: 11434
+        path: /v1/chat/completions
+        model: llama3.2:3b

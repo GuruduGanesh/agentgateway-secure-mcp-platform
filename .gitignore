@@ -1,0 +1,69 @@
+# --- Local-only project files (never check in) ---
+PROJECT_BRIEF.md
+A1_AgentGateway/
+
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*-secret.yaml
+*-secrets.yaml
+secret*.yaml
+secrets/
+
+# --- Test / scratch / local-only ---
+*.local
+*.local.*
+scratch/
+tmp/
+.tmp/
+temp/
+out/
+coverage/
+test-results/
+reports/
+artifacts/
+generated/
+*.tmp
+*.bak
+*.orig
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.har
+*.trace
+*.pcap
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Language / tooling ---
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Docker / local runtime state ---
+.docker/
+deploy/docker/data/
+deploy/docker/volumes/
+config/observability/data/
+config/identity/keycloak/data/

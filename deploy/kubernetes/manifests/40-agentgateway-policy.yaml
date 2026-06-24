@@ -1,0 +1,16 @@
+apiVersion: gateway.agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: local-security-observability
+  namespace: agentgateway-demo
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: ollama-llm
+  # Demo placeholder: expand with JWT, rate limit, MCP authorization, and telemetry policy
+  # after validating exact v1.3.1 CRD fields in the live cluster.
+  policy:
+    cors:
+      allowOrigins:
+        - "*"

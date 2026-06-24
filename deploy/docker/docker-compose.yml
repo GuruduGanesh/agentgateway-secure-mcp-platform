@@ -1,0 +1,149 @@
+name: agentgateway-secure-mcp
+
+services:
+  agentgateway-llm-laptop:
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    command:
+      - -f
+      - /etc/agentgateway/config.llm.yaml
+    ports:
+      - "${AGENTGATEWAY_HTTP_PORT:-3000}:3000"
+      - "${AGENTGATEWAY_ADMIN_PORT:-15000}:15000"
+      - "${AGENTGATEWAY_STATS_PORT:-15020}:15020"
+    volumes:
+      - ../../config/agentgateway/standalone/llm-laptop.yaml:/etc/agentgateway/config.llm.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["laptop"]
+
+  agentgateway-llm:
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    command:
+      - -f
+      - /etc/agentgateway/config.llm.yaml
+    ports:
+      - "${AGENTGATEWAY_HTTP_PORT:-3000}:3000"
+      - "${AGENTGATEWAY_ADMIN_PORT:-15000}:15000"
+      - "${AGENTGATEWAY_STATS_PORT:-15020}:15020"
+    volumes:
+      - ../../config/agentgateway/standalone/llm.yaml:/etc/agentgateway/config.llm.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["llm"]
+
+  agentgateway-mcp-secure:
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    command:
+      - -f
+      - /etc/agentgateway/config.mcp-secure.yaml
+    ports:
+      - "3002:3000"
+      - "15002:15000"
+      - "15022:15020"
+    volumes:
+      - ../../config/agentgateway/standalone/mcp-secure.yaml:/etc/agentgateway/config.mcp-secure.yaml:ro
+      - ../../examples/mcp-servers:/workspace/mcp-servers:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      keycloak:
+        condition: service_started
+      sqlite-tools:
+        condition: service_started
+      http-tools:
+        condition: service_started
+      openapi-app:
+        condition: service_started
+    profiles: ["mcp", "security"]
+
+  sqlite-tools:
+    image: node:22-alpine
+    working_dir: /workspace/examples/mcp-servers
+    command: ["node", "sqlite-tools/server.js"]
+    ports:
+      - "7003:7003"
+    volumes:
+      - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
+    profiles: ["mcp", "security"]
+
+  http-tools:
+    image: node:22-alpine
+    working_dir: /workspace/examples/mcp-servers
+    command: ["node", "http-tools/server.js"]
+    ports:
+      - "7001:7001"
+    volumes:
+      - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
+    profiles: ["mcp", "security"]
+
+  openapi-app:
+    image: node:22-alpine
+    working_dir: /workspace/examples/mcp-servers
+    command: ["node", "openapi-app/server.js"]
+    ports:
+      - "7002:7002"
+    volumes:
+      - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
+    profiles: ["mcp", "security"]
+
+  keycloak:
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.6.3}
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Pin the issuer so tokens fetched via localhost:8080 still carry
+      # iss=http://keycloak:8080/realms/agentgateway, matching the gateway's
+      # mcpAuthentication.issuer (reachable by service DNS for JWKS).
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    volumes:
+      - ../../config/identity/keycloak/realm-agentgateway.json:/opt/keycloak/data/import/realm-agentgateway.json:ro
+    profiles: ["security"]
+
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.154.0}
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    volumes:
+      - ../../config/observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      - jaeger
+    profiles: ["observability"]
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.12.0}
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../../config/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    profiles: ["observability"]
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.0.2}
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3001:3000"
+    volumes:
+      - ../../config/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../config/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    profiles: ["observability"]
+
+  jaeger:
+    image: ${JAEGER_IMAGE:-jaegertracing/jaeger:2.8.0}
+    ports:
+      - "16686:16686"
+      - "4319:4317"
+    profiles: ["observability"]

@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+# OPTIONAL high-reasoning profile — WORKSTATION ONLY, NOT the default.
+# These models are very large and will NOT run on an ordinary laptop:
+#   qwen3.6:35b (~24 GB), gpt-oss:120b (huge), deepseek-r1:671b (~404 GB).
+# The default, recordable profile is llm-laptop.yaml (llama3.2:3b). Use this file
+# only on serious local hardware. Structure validated against agentgateway v1.3.1.
+config:
+  adminAddr: 0.0.0.0:15000
+  statsAddr: 0.0.0.0:15020
+  logging:
+    level: ["info"]
+  tracing:
+    otlpEndpoint: http://otel-collector:4317
+    randomSampling: true
+
+llm:
+  port: 3000
+  policies:
+    apiKey:
+      mode: strict
+      keys:
+      - key: sk-demo-reader-local
+        metadata:
+          user: alice-reader
+          tenant: tenant-a
+          profile: high-reasoning
+      - key: sk-demo-operator-local
+        metadata:
+          user: oliver-operator
+          tenant: tenant-b
+          profile: high-reasoning
+    localRateLimit:
+    - maxTokens: 8192
+      tokensPerFill: 2048
+      fillInterval: 60s
+      type: tokens
+  models:
+  - name: enterprise-reasoning-latest
+    provider: ollama
+    params:
+      model: qwen3.6:35b
+      baseUrl: http://host.docker.internal:11434/v1
+      tokenize: true
+  - name: enterprise-reasoning-heavyweight
+    provider: ollama
+    params:
+      model: gpt-oss:120b
+      baseUrl: http://host.docker.internal:11434/v1
+      tokenize: true

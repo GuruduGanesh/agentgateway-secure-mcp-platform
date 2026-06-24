@@ -1,0 +1,15 @@
+{
+  "name": "agentgateway-secure-mcp-samples",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "stdio": "node stdio-tools/server.js",
+    "sqlite-tools": "node sqlite-tools/server.js",
+    "http-tools": "node http-tools/server.js",
+    "openapi-app": "node openapi-app/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

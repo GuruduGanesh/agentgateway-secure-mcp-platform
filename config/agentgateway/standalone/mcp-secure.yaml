@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+# Virtual MCP + JWT auth + per-target tool authorization.
+# Structure validated against agentgateway v1.3.1 docs.
+#
+# All three targets are HTTP-based `mcp:`/`openapi:` targets so the distroless
+# gateway image never needs an in-container runtime. Federation (initialize,
+# tools/list, tools/call) verified through the gateway for all targets.
+# A pure-stdio variant of the sqlite tools remains in examples/mcp-servers/stdio-tools
+# for local/standalone use; it is NOT used here because the gateway image has no node.
+config:
+  adminAddr: 0.0.0.0:15000
+  statsAddr: 0.0.0.0:15020
+  logging:
+    level: ["info"]
+  tracing:
+    otlpEndpoint: http://otel-collector:4317
+    randomSampling: true
+
+mcp:
+  port: 3000
+  policies:
+    cors:
+      allowOrigins:
+      - "*"
+      allowHeaders:
+      - "*"
+      exposeHeaders:
+      - Mcp-Session-Id
+    mcpAuthentication:
+      issuer: http://keycloak:8080/realms/agentgateway
+      audiences:
+      - agentgateway-demo
+      jwks:
+        url: http://keycloak:8080/realms/agentgateway/protocol/openid-connect/certs
+      resourceMetadata:
+        resource: http://localhost:3002/mcp
+        scopesSupported:
+        - read:all
+        - write:tenant
+        bearerMethodsSupported:
+        - header
+    # Listener-level tool authorization (allow-rules; default deny).
+    # NOTE: in the authz CEL context `mcp.tool.name` is the BARE tool name
+    # (e.g. read_incidents), NOT the target-prefixed name shown in tools/list
+    # (sqlite_read_incidents). Use `mcp.target` to scope by target if needed.
+    #  - reader: only the read tools across all targets
+    #  - operator: any tool, but only for its own tenant (tenant-b)
+    mcpAuthorization:
+      rules:
+      - 'has(jwt.roles) && "reader" in jwt.roles && mcp.tool.name in ["read_incidents", "read_service_health", "readTickets"]'
+      - 'has(jwt.roles) && "operator" in jwt.roles && jwt.tenant == "tenant-b"'
+  targets:
+  - name: sqlite
+    mcp:
+      host: http://sqlite-tools:7003/mcp/
+  - name: http
+    mcp:
+      host: http://http-tools:7001/mcp/
+  - name: openapi
+    openapi:
+      schema:
+        url: http://openapi-app:7002/openapi.yaml
+      host: openapi-app:7002

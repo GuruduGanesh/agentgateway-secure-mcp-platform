@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-label="agentgateway secure MCP platform architecture">
+  <rect width="1200" height="720" fill="#0A1020"/>
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0E1A30"/>
+      <stop offset="1" stop-color="#111D34"/>
+    </linearGradient>
+    <style>
+      .box{fill:url(#g);stroke:#2DD4BF;stroke-width:2}
+      .gateway{fill:#15240F;stroke:#B6F03C;stroke-width:3}
+      .text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#E8EEF7;font-size:24px;font-weight:700}
+      .small{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#93A3B8;font-size:17px}
+      .line{stroke:#38BDF8;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#38BDF8"/>
+    </marker>
+  </defs>
+  <text x="60" y="62" class="text" font-size="34">agentgateway Secure MCP Platform</text>
+  <text x="60" y="94" class="small">Local enterprise demo: Ollama, Virtual MCP, Keycloak, OpenTelemetry, Prometheus, Grafana, Jaeger</text>
+  <rect x="60" y="155" width="220" height="110" rx="14" class="box"/>
+  <text x="92" y="205" class="text">Clients</text>
+  <text x="92" y="235" class="small">OpenAI API / MCP</text>
+  <rect x="430" y="130" width="310" height="160" rx="18" class="gateway"/>
+  <text x="484" y="195" class="text">agentgateway</text>
+  <text x="484" y="227" class="small">LLM + MCP policy front door</text>
+  <rect x="900" y="110" width="230" height="95" rx="14" class="box"/>
+  <text x="930" y="150" class="text">Ollama</text>
+  <text x="930" y="180" class="small">laptop + workstation profiles</text>
+  <rect x="900" y="250" width="230" height="120" rx="14" class="box"/>
+  <text x="930" y="294" class="text">Virtual MCP</text>
+  <text x="930" y="324" class="small">stdio + HTTP + OpenAPI</text>
+  <rect x="430" y="410" width="230" height="100" rx="14" class="box"/>
+  <text x="462" y="452" class="text">Keycloak</text>
+  <text x="462" y="482" class="small">OAuth/JWT + roles</text>
+  <rect x="740" y="470" width="210" height="95" rx="14" class="box"/>
+  <text x="770" y="510" class="text">OTel</text>
+  <text x="770" y="540" class="small">metrics + traces</text>
+  <rect x="990" y="430" width="155" height="70" rx="14" class="box"/>
+  <text x="1015" y="474" class="small" fill="#E8EEF7">Prometheus</text>
+  <rect x="990" y="525" width="155" height="70" rx="14" class="box"/>
+  <text x="1018" y="569" class="small" fill="#E8EEF7">Grafana</text>
+  <rect x="990" y="620" width="155" height="70" rx="14" class="box"/>
+  <text x="1025" y="664" class="small" fill="#E8EEF7">Jaeger</text>
+  <path d="M280 210 H430" class="line"/>
+  <path d="M740 180 H900" class="line"/>
+  <path d="M740 250 H900" class="line"/>
+  <path d="M545 410 V290" class="line"/>
+  <path d="M740 515 H660 C610 515 600 420 600 290" class="line"/>
+  <path d="M950 518 H990" class="line"/>
+  <path d="M950 518 C975 518 975 465 990 465" class="line"/>
+  <path d="M950 518 C975 518 975 655 990 655" class="line"/>
+</svg>

@@ -1,0 +1,260 @@
+# agentgateway-secure-mcp-platform
+
+Enterprise-grade, fully local reference setup for [agentgateway](https://agentgateway.dev/) focused on secure MCP access with RBAC, OAuth/JWT, multi-tenancy, and full observability.
+
+This repository is a runnable demo architecture, not a fork of agentgateway. The upstream [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) project is used as reference-only source material for patterns and terminology. This repo keeps its own enterprise demo layout for local Docker, Kubernetes, identity, observability, sample MCP services, and smoke tests.
+
+**Repository:** [GuruduGanesh/agentgateway-secure-mcp-platform](https://github.com/GuruduGanesh/agentgateway-secure-mcp-platform.git)
+
+> Private source files such as `PROJECT_BRIEF.md` and `A1_AgentGateway/` are intentionally ignored and must not be committed.
+
+## Architecture
+
+![Architecture](assets/diagrams/architecture.svg)
+
+```mermaid
+flowchart TB
+  subgraph Clients["Enterprise clients"]
+    OpenAIClient["OpenAI-compatible apps"]
+    MCPClient["MCP-aware agents"]
+    Operator["Platform/SRE operator"]
+  end
+
+  subgraph Edge["Local secure ingress"]
+    AG["agentgateway data plane\nLLM + MCP front door"]
+  end
+
+  subgraph Identity["Identity and authorization"]
+    Keycloak["Keycloak realm\nOAuth2/OIDC + JWT"]
+    RBAC["CEL tool authorization\nreader/operator + tenant claims"]
+  end
+
+  subgraph AI["Local model plane"]
+    Ollama["Ollama OpenAI-compatible API"]
+    ModelA["llama3.2:3b\nlaptop recording"]
+    ModelB["qwen3.6:35b\nworkstation reasoning"]
+    ModelC["gpt-oss:120b\nheavyweight optional"]
+  end
+
+  subgraph Tools["Virtual MCP tool plane"]
+    VMCP["Virtual MCP endpoint"]
+    Stdio["stdio MCP tools\nSQLite/filesystem style"]
+    HTTP["streamable HTTP MCP tools"]
+    OpenAPI["OpenAPI REST app\nexposed as tools"]
+  end
+
+  subgraph Observability["Observability plane"]
+    OTel["OpenTelemetry Collector"]
+    Prom["Prometheus"]
+    Grafana["Grafana dashboards"]
+    Jaeger["Jaeger traces"]
+  end
+
+  subgraph Platform["Kubernetes promotion path"]
+    Kind["kind cluster"]
+    GatewayAPI["Gateway API CRDs"]
+    Helm["agentgateway Helm"]
+    Policies["Gateway / Route / Backend / Policy"]
+  end
+
+  OpenAIClient --> AG
+  MCPClient --> AG
+  Operator --> Grafana
+  Keycloak --> AG
+  RBAC --> AG
+  AG --> Ollama
+  Ollama --> ModelA
+  Ollama --> ModelB
+  Ollama --> ModelC
+  AG --> VMCP
+  VMCP --> Stdio
+  VMCP --> HTTP
+  VMCP --> OpenAPI
+  AG --> OTel
+  OTel --> Prom
+  OTel --> Jaeger
+  Prom --> Grafana
+  Kind --> GatewayAPI --> Helm --> Policies
+  Policies --> AG
+```
+
+## Enterprise Folder Structure
+
+```text
+agentgateway-secure-mcp-platform/
+  README.md
+  .env.example
+  .gitignore
+  assets/
+    diagrams/                         # public architecture visuals
+  config/
+    agentgateway/
+      standalone/                     # standalone data-plane configs
+    identity/
+      keycloak/                       # importable demo realm
+    observability/                    # otel/prometheus/grafana config
+  deploy/
+    docker/                           # compose entrypoint for local profiles
+    kubernetes/
+      kind/                           # local cluster definition
+      gateway-api/                    # CRD install notes
+      helm/                           # agentgateway Helm values
+      manifests/                      # Gateway API + agentgateway CRs
+  docs/
+    architecture/                     # platform design notes
+    demo/                             # recording runbook
+    operations/                       # local ops and troubleshooting
+    security/                         # identity/RBAC model
+  examples/
+    mcp-servers/                      # stdio, HTTP, and OpenAPI tool sources
+  tests/
+    smoke/                            # runnable local validation scripts
+```
+
+Why this shape:
+
+- `config/` stores declarative platform configuration by concern.
+- `deploy/` stores deployment mechanisms by runtime target.
+- `examples/` stores demo workloads that sit behind the gateway.
+- `tests/` stores repeatable validation, separate from operational scripts.
+- `docs/` stores durable design and runbook material.
+- `assets/` stores public visuals used by README/docs.
+
+## Version Matrix
+
+| Component | Pinned version |
+| --- | --- |
+| agentgateway image | `cr.agentgateway.dev/agentgateway:v1.3.1` |
+| agentgateway Helm chart | `oci://cr.agentgateway.dev/charts/agentgateway --version v1.3.1` |
+| agentgateway CRDs chart | `oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.3.1` |
+| Gateway API CRDs | `v1.5.0` |
+| kind | `v0.32.0` |
+| Kubernetes target | `v1.36.x` |
+| Helm | `v3.21.2` |
+| Keycloak | `quay.io/keycloak/keycloak:26.6.3` |
+| OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.154.0` |
+| Prometheus | `prom/prometheus:v3.12.0` |
+| Grafana | `grafana/grafana:13.0.2` |
+| Jaeger | `jaegertracing/jaeger:2.8.0` |
+| Ollama laptop recording model | `llama3.2:3b` |
+| Ollama laptop secondary model | `qwen2.5:7b` |
+| Ollama default model (laptop) | `llama3.2:3b` |
+| Ollama optional 2nd alias (laptop) | `qwen2.5:7b` |
+| Ollama optional high-reasoning (workstation) | `qwen3.6:35b` |
+| Ollama optional heavyweight (workstation) | `gpt-oss:120b` |
+| Ollama optional max-reasoning reference (workstation) | `deepseek-r1:671b-0528-q4_K_M` |
+
+## Prerequisites
+
+- Windows with Docker Desktop.
+- PowerShell 7 or Windows PowerShell.
+- [Ollama](https://ollama.com/) running on the host.
+- Optional for Kubernetes milestone: `kind`, `kubectl`, and Helm.
+- Optional for local sample MCP servers: Node.js 20+.
+
+RAM guide: the recording path uses `llama3.2:3b` by default so the demo stays reproducible on a normal laptop. The high-reasoning profile uses `qwen3.6:35b` and documents `gpt-oss:120b` / `deepseek-r1:671b-0528-q4_K_M` as workstation-class references.
+
+## Quickstart: Standalone LLM Gateway
+
+1. Copy the environment template:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+2. Pull local models:
+
+```powershell
+ollama pull llama3.2:3b
+ollama pull qwen2.5:7b
+```
+
+3. Start observability and the laptop-safe standalone gateway:
+
+```powershell
+docker compose -f deploy/docker/docker-compose.yml --profile observability --profile laptop up -d
+```
+
+4. Send one OpenAI-compatible request through agentgateway:
+
+```powershell
+.\tests\smoke\smoke-llm.ps1
+```
+
+Expected result: an HTTP 200 chat completion from `http://localhost:3000/v1/chat/completions` using local Ollama behind agentgateway.
+
+For a high-reasoning workstation profile:
+
+```powershell
+ollama pull qwen3.6:35b
+docker compose -f deploy/docker/docker-compose.yml --profile observability --profile llm up -d
+.\tests\smoke\smoke-llm.ps1 -Model enterprise-reasoning-latest
+```
+
+## Current Status
+
+| Milestone | State | Evidence |
+| --- | --- | --- |
+| Standalone Docker + Ollama | Runnable laptop profile | `llm-laptop.yaml`, `agentgateway-llm-laptop`, `smoke-llm.ps1` |
+| LLM alias + token budget | Partially runnable | aliases, API keys, and local token limit are configured; failover/content routing are still planned |
+| MCP federation | Configured for validation | stdio, streamable HTTP, and OpenAPI targets exist; HTTP/OpenAPI services are now in Compose |
+| Security/RBAC | Configured for validation | Keycloak realm plus documented `mcpAuthentication` / target-level `mcpAuthorization` |
+| Observability | Stack runs; gateway wiring fixed | tracing via `config.tracing.otlpEndpoint`; Prometheus scrapes the stats listener on `:15020` (verified) |
+| Kubernetes/Helm | Skeleton | routing manifests exist; security/rate-limit/telemetry policies still need promotion |
+
+**Tracking & setup (living docs):** done-vs-pending checklist → [docs/STATUS.md](docs/STATUS.md); from-scratch local setup → [docs/SETUP.md](docs/SETUP.md).
+
+## Demo Milestones
+
+1. Standalone Docker + Ollama: runnable and recordable with the laptop profile.
+2. LLM governance: aliases, API keys, and local token budgets are configured; failover/content-based routing remain planned.
+3. MCP federation: configured for stdio, streamable HTTP, and OpenAPI targets; validate end-to-end before recording this segment.
+4. Security: Keycloak realm and target-level MCP RBAC are configured; run reader/operator smoke before claiming it as proven.
+5. Observability: local stack is runnable and gateway OTLP tracing is configured.
+6. Kubernetes: kind/Helm skeleton exists; security and telemetry policy promotion remains planned.
+
+Full runbook: [docs/demo/DEMO.md](docs/demo/DEMO.md).
+
+## Security Model
+
+- Demo identity provider: local Keycloak realm in `config/identity/keycloak/realm-agentgateway.json`.
+- Demo users:
+  - `alice-reader` / `reader-password`: tenant `tenant-a`, role `reader`.
+  - `oliver-operator` / `operator-password`: tenant `tenant-b`, role `operator`.
+- Tool access intent:
+  - `reader` can call read-only tools.
+  - `operator` can call read and write tools for the same tenant.
+  - Cross-tenant requests are denied.
+- `.env`, real secrets, generated databases, logs, traces, and local artifacts are ignored.
+
+## Observability
+
+The local observability profile provides:
+
+- OpenTelemetry Collector on OTLP ports `4317` and `4318`.
+- Prometheus on `http://localhost:9090`.
+- Grafana on `http://localhost:3001` with admin credentials from `.env`.
+- Jaeger UI on `http://localhost:16686`.
+
+Start it with:
+
+```powershell
+docker compose -f deploy/docker/docker-compose.yml --profile observability up -d
+```
+
+## Kubernetes Promotion
+
+The Kubernetes milestone uses kind. Install order matters:
+
+```powershell
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
+helm install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.3.1 -n agentgateway-system --create-namespace
+helm install agentgateway oci://cr.agentgateway.dev/charts/agentgateway --version v1.3.1 -n agentgateway-system -f deploy/kubernetes/helm/values.yaml
+kubectl apply -f deploy/kubernetes/manifests/
+```
+
+The default Kubernetes path keeps Ollama on the host and reaches it from pods through `host.docker.internal`.
+
+## Production Caveats
+
+This is a local demo reference, not a production deployment. Before production use, replace demo credentials, configure TLS/mTLS, externalize secret management, use HA control/data planes, pin chart digests, add policy review, define SLOs, and connect to enterprise identity and audit systems.

@@ -1,0 +1,36 @@
+openapi: 3.0.3
+info:
+  title: Tenant Operations Demo API
+  version: 0.1.0
+servers:
+  - url: /
+paths:
+  /tickets:
+    get:
+      operationId: readTickets
+      parameters:
+        - in: query
+          name: tenant
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Demo tickets
+    post:
+      operationId: writeTicket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant, message]
+              properties:
+                tenant:
+                  type: string
+                message:
+                  type: string
+      responses:
+        "200":
+          description: Created ticket

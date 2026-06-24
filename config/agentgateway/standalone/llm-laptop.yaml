@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+# DEFAULT recording profile: lightweight, low-memory, laptop-friendly.
+# Primary model llama3.2:3b (~2 GB). Verified to load and serve through agentgateway v1.3.1.
+config:
+  adminAddr: 0.0.0.0:15000
+  statsAddr: 0.0.0.0:15020
+  logging:
+    level: ["info"]
+  tracing:
+    otlpEndpoint: http://otel-collector:4317
+    randomSampling: true
+
+llm:
+  port: 3000
+  policies:
+    apiKey:
+      mode: strict
+      keys:
+      - key: sk-demo-reader-local
+        metadata:
+          user: alice-reader
+          tenant: tenant-a
+          profile: laptop
+      - key: sk-demo-operator-local
+        metadata:
+          user: oliver-operator
+          tenant: tenant-b
+          profile: laptop
+    localRateLimit:
+    - maxTokens: 4096
+      tokensPerFill: 1024
+      fillInterval: 60s
+      type: tokens
+  models:
+  # Primary lightweight alias (default). Requires: ollama pull llama3.2:3b
+  - name: laptop-demo
+    provider: ollama
+    params:
+      model: llama3.2:3b
+      baseUrl: http://host.docker.internal:11434/v1
+      tokenize: true
+  # Optional second alias for the model-aliasing demo. Requires: ollama pull qwen2.5:7b
+  - name: laptop-reasoning
+    provider: ollama
+    params:
+      model: qwen2.5:7b
+      baseUrl: http://host.docker.internal:11434/v1
+      tokenize: true
