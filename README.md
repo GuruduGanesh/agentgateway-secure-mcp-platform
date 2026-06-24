@@ -199,7 +199,7 @@ docker compose -f deploy/docker/docker-compose.yml --profile observability --pro
 | LLM alias + token budget | Partially runnable | aliases, API keys, and local token limit are configured; failover/content routing are still planned |
 | MCP federation | Configured for validation | stdio, streamable HTTP, and OpenAPI targets exist; HTTP/OpenAPI services are now in Compose |
 | Security/RBAC | Configured for validation | Keycloak realm plus documented `mcpAuthentication` / target-level `mcpAuthorization` |
-| Observability | Stack runs; gateway wiring fixed | tracing via `config.tracing.otlpEndpoint`; Prometheus scrapes the stats listener on `:15020` (verified) |
+| Observability | Verified | Prometheus target UP on `:15020`, Grafana dashboard provisioned, Jaeger receives gateway traces |
 | Kubernetes/Helm | Skeleton | routing manifests exist; security/rate-limit/telemetry policies still need promotion |
 
 **Tracking & setup (living docs):** done-vs-pending checklist → [docs/STATUS.md](docs/STATUS.md); from-scratch local setup → [docs/SETUP.md](docs/SETUP.md).

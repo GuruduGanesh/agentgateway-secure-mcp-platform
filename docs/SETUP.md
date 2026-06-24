@@ -70,16 +70,18 @@ docker compose -f deploy/docker/docker-compose.yml --profile laptop --profile ob
 
 ---
 
-## 4. Milestone 5 — Observability (stack runs; traces unconfirmed)
+## 4. Milestone 5 — Observability (VERIFIED)
 
-Brought up by the `observability` profile in step 3. Open in a browser:
+Brought up by the `observability` profile in step 3. After generating a few authenticated LLM calls, all three surfaces were confirmed:
 
-| URL | What to check |
-| --- | --- |
-| http://localhost:15020/metrics | gateway metrics (verified) |
-| http://localhost:9090/targets | Prometheus → `agentgateway` job scraping `host.docker.internal:15020`, state **UP** (verify) |
-| http://localhost:3001 | Grafana, login `admin`/`admin`, dashboard **agentgateway-secure-mcp** (verify) |
-| http://localhost:16686 | Jaeger; after some calls, service `agentgateway` traces (verify) |
+| URL | What to check | Verified result |
+| --- | --- | --- |
+| http://localhost:15020/metrics | gateway metrics | 200, `agentgateway_*` metrics |
+| http://localhost:9090/targets | `agentgateway` job scraping `:15020` | state **UP**; `agentgateway_requests_total` increments |
+| http://localhost:3001 | Grafana (`admin`/`admin`), dashboard **agentgateway Secure MCP Local Demo** | healthy, Prometheus datasource default, dashboard provisioned |
+| http://localhost:16686 | Jaeger, service `agentgateway` | traces present (one per request) |
+
+> First run downloads ~1.5 GB of images (Prometheus/Grafana/Jaeger/OTel) — expect a slow initial `up`. Traces only export when the `observability` profile (otel-collector) is running on the same network.
 
 ---
 

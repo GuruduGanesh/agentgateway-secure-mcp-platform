@@ -23,7 +23,7 @@ Last local validation: 2026-06-23 on Windows + Docker Desktop, agentgateway `v1.
 | 2. LLM resilience/governance | Partial | Model aliases, API keys, and local token budgets are configured and load. | Add real failover/load balancing and content-based routing (needs multiple backends behind one alias), then validate. |
 | 3. MCP federation | **Verified (no-auth)** | All three tool servers now run over HTTP (`mcp:`/`openapi:` targets) — no in-container runtime needed. Federation proven through the gateway: `initialize`, `tools/list` (6 tools, correctly prefixed `sqlite_/http_/openapi_`), and `tools/call` all work. The distroless stdio blocker is resolved (sqlite tools moved to HTTP; stdio variant kept standalone). | Prove the same through the gateway *with* JWT auth + RBAC (M4). Fix OpenAPI arg→query mapping (tenant came through null). |
 | 4. Security/RBAC | **Verified** | JWT auth + RBAC proven end-to-end through the gateway. `smoke-rbac.ps1` passes 6/6: no-token→401; reader sees/calls only read tools (writes filtered + denied); operator (tenant-b) can call writes. | Add a same-role/other-tenant user to demo cross-tenant denial explicitly. |
-| 5. Observability | Stack ready; gateway wiring fixed & partly verified | OTel/Prometheus/Grafana/Jaeger wired. Gateway tracing fixed to `config.tracing.otlpEndpoint`; metrics endpoint corrected to the stats listener on **:15020** (verified serving 44 KB of metrics). | Confirm Jaeger traces + Grafana panels after a real run with the observability profile. |
+| 5. Observability | **Verified** | After 5 authenticated LLM calls: Prometheus `agentgateway` target UP scraping `:15020` (`agentgateway_requests_total=5`); Grafana healthy with Prometheus datasource + provisioned dashboard; Jaeger shows 5 `agentgateway` traces. OTLP export works once the collector is on-network. | Eyeball Grafana panels in-browser; add MCP/token panels. |
 | 6. Kubernetes/Helm | Skeleton | kind, Helm values, Gateway, HTTPRoute, Backend, and placeholder Policy exist. | Promote real auth/rate-limit/tracing policies into CRDs and validate with a kind run (helm/kind not yet installed locally). |
 | Blog draft | Draft added | First-person hands-on article draft exists under `docs/blog/`. | Revise with the real gotchas found in testing (distroless image, invalid top-level `admin`/`telemetry` keys, tracing schema, metrics port). |
 
@@ -57,8 +57,10 @@ Single source of truth for done vs. pending. `[x]` = verified locally; `[~]` = c
 - [x] Sample MCP servers run standalone (stdio / HTTP / OpenAPI)
 - [x] End-to-end setup runbook written ([SETUP.md](SETUP.md)) — software, ports, credentials, troubleshooting
 
-### Configured, not yet proven (next up)
-- [~] Observability end-to-end (M5) — confirm Prometheus target UP, Grafana dashboard loads, Jaeger shows gateway traces after real calls
+### Done (verified locally) — M5
+- [x] Prometheus `agentgateway` target UP (`:15020`), request metrics increment with traffic
+- [x] Grafana healthy, Prometheus datasource + provisioned dashboard present
+- [x] Jaeger receives gateway traces (5 traces after 5 calls); OTLP export confirmed
 
 ### Done (verified locally) — M4
 - [x] JWT auth at the MCP gateway (no-token → 401; valid Keycloak token accepted)
