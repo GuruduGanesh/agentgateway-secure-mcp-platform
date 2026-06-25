@@ -165,8 +165,8 @@ Copy-Item .env.example .env
 2. Pull local models:
 
 ```powershell
-ollama pull llama3.2:3b
-ollama pull qwen2.5:7b
+ollama pull llama3.2:3b            # required — the default laptop path
+ollama pull qwen2.5:7b             # optional — only for the model-aliasing demo
 ```
 
 3. Start observability and the laptop-safe standalone gateway:
@@ -193,25 +193,27 @@ docker compose -f deploy/docker/docker-compose.yml --profile observability --pro
 
 ## Current Status
 
+All six milestones are verified end-to-end locally (last full re-run 2026-06-24; agentgateway `v1.3.1`, Ollama `llama3.2:3b`).
+
 | Milestone | State | Evidence |
 | --- | --- | --- |
-| Standalone Docker + Ollama | Runnable laptop profile | `llm-laptop.yaml`, `agentgateway-llm-laptop`, `smoke-llm.ps1` |
-| LLM alias + token budget | Partially runnable | aliases, API keys, and local token limit are configured; failover/content routing are still planned |
-| MCP federation | Configured for validation | stdio, streamable HTTP, and OpenAPI targets exist; HTTP/OpenAPI services are now in Compose |
-| Security/RBAC | Configured for validation | Keycloak realm plus documented `mcpAuthentication` / target-level `mcpAuthorization` |
-| Observability | Verified | Prometheus target UP on `:15020`, Grafana dashboard provisioned, Jaeger receives gateway traces |
-| Kubernetes/Helm | Skeleton | routing manifests exist; security/rate-limit/telemetry policies still need promotion |
+| M1 Standalone Docker + Ollama | **Verified** | `smoke-llm.ps1`: no-auth → 401, valid Bearer → 200 + real completion; metrics on `:15020` |
+| M2 LLM resilience / failover | **Verified** | `smoke-m2.ps1` 3/3: dead primary trips breaker, traffic fails over to live backup via `health.eviction` |
+| M3 MCP federation | **Verified** | 6 tools federated + prefixed (`sqlite_`/`http_`/`openapi_`); `initialize`/`tools/list`/`tools/call` through the gateway |
+| M4 Security/RBAC | **Verified** | `smoke-rbac.ps1` 7/7: no-token → 401; reader limited to read tools (filtered + denied); operator writes allowed; OpenAPI query-param round-trips |
+| M5 Observability | **Verified** | Prometheus target UP on `:15020` (`agentgateway_requests_total` increments), Grafana dashboard provisioned, Jaeger receives gateway traces |
+| M6 Kubernetes/Helm | **Verified** | kind + Helm v1.3.1 CRDs; Gateway Programmed, Backend Accepted, Policy Accepted+Attached; `smoke-k8s.ps1 -E2E` drives a live LLM call through the in-cluster gateway |
 
 **Tracking & setup (living docs):** done-vs-pending checklist → [docs/STATUS.md](docs/STATUS.md); from-scratch local setup → [docs/SETUP.md](docs/SETUP.md).
 
 ## Demo Milestones
 
-1. Standalone Docker + Ollama: runnable and recordable with the laptop profile.
-2. LLM governance: aliases, API keys, and local token budgets are configured; failover/content-based routing remain planned.
-3. MCP federation: configured for stdio, streamable HTTP, and OpenAPI targets; validate end-to-end before recording this segment.
-4. Security: Keycloak realm and target-level MCP RBAC are configured; run reader/operator smoke before claiming it as proven.
-5. Observability: local stack is runnable and gateway OTLP tracing is configured.
-6. Kubernetes: kind/Helm skeleton exists; security and telemetry policy promotion remains planned.
+1. Standalone Docker + Ollama: runnable and recordable with the laptop profile (verified).
+2. LLM resilience: `resilient` virtual model with `failover` routing + `health.eviction` outlier detection; proven dead-primary → live-backup with `smoke-m2.ps1` (load-balancing/content-routing variants remain optional).
+3. MCP federation: stdio (served over HTTP), streamable HTTP, and OpenAPI targets federated behind one Virtual MCP endpoint; verified end-to-end through the gateway.
+4. Security: Keycloak realm + listener-level MCP RBAC (CEL); reader/operator allow-deny + multi-tenant claims proven with `smoke-rbac.ps1` (7/7).
+5. Observability: OTel → Prometheus/Grafana/Jaeger; gateway metrics scraped and traces received (verified).
+6. Kubernetes: kind/Helm promotion with the live agentgateway CRDs; a real LLM call flows through the in-cluster gateway (verified). Promoting M4 JWT/RBAC into `spec.traffic` CRDs remains the one open stretch item.
 
 Full runbook: [docs/demo/DEMO.md](docs/demo/DEMO.md).
 
@@ -254,6 +256,10 @@ kubectl apply -f deploy/kubernetes/manifests/
 ```
 
 The default Kubernetes path keeps Ollama on the host and reaches it from pods through `host.docker.internal`.
+
+## License
+
+This repository is licensed under the [Apache License 2.0](LICENSE), matching the upstream [agentgateway](https://github.com/agentgateway/agentgateway) project. agentgateway itself is a separate work owned by its authors and the Linux Foundation; this repo only references it and ships pinned upstream images/charts — it is not a fork.
 
 ## Production Caveats
 

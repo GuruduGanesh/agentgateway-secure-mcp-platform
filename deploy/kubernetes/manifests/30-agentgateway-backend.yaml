@@ -1,13 +1,19 @@
-apiVersion: gateway.agentgateway.dev/v1alpha1
+# AgentgatewayBackend — host Ollama (OpenAI-compatible) as an LLM backend.
+# Validated against the live v1.3.1 CRD (group agentgateway.dev/v1alpha1):
+# spec.ai uses groups[].providers[]; host/port/pathPrefix override the managed
+# provider default, and `openai.model` overrides the request model.
+apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayBackend
 metadata:
   name: ollama-local
   namespace: agentgateway-demo
 spec:
   ai:
-    provider:
-      openai:
-        host: host.docker.internal
-        port: 11434
-        path: /v1/chat/completions
-        model: llama3.2:3b
+    groups:
+      - providers:
+          - name: ollama
+            host: host.docker.internal
+            port: 11434
+            pathPrefix: /v1
+            openai:
+              model: llama3.2:3b

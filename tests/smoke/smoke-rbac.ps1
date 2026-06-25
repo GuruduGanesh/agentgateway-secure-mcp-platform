@@ -24,13 +24,35 @@ function New-McpSession($tok) {
   return @{ Authorization = "Bearer $tok"; Accept = "application/json, text/event-stream"; "Mcp-Session-Id" = $sid }
 }
 
+# agentgateway groups OpenAPI parameters by location, so query params are nested
+# under a `query` object in the generated tool schema (e.g. readTickets expects
+# arguments={query:{tenant:...}}, NOT a flat {tenant:...} — a flat arg reaches the
+# backend as null). mcp:/passthrough tools (sqlite_/http_) take flat args.
+function Get-ToolArgs($name) {
+  switch ($name) {
+    "openapi_readTickets" { return @{ query = @{ tenant = "tenant-a" } } }
+    default               { return @{ tenant = "tenant-a"; note = "x"; service = "payments" } }
+  }
+}
+
 function Invoke-Tool($H, $name) {
-  $body = (@{ jsonrpc="2.0"; id=9; method="tools/call"; params=@{ name=$name; arguments=@{ tenant="tenant-a"; note="x"; service="payments" } } } | ConvertTo-Json -Depth 6)
+  $body = (@{ jsonrpc="2.0"; id=9; method="tools/call"; params=@{ name=$name; arguments=(Get-ToolArgs $name) } } | ConvertTo-Json -Depth 8)
   try {
     $r = Invoke-WebRequest -Method Post -Uri $GatewayMcpUrl -ContentType "application/json" -Headers $H -Body $body -UseBasicParsing
     $j = ($r.Content -replace '^data: ','' | ConvertFrom-Json)
     if ($j.error) { return "DENIED" } else { return "ALLOWED" }
   } catch { return "DENIED" }
+}
+
+# Returns the tenant value echoed by the OpenAPI backend, to prove query-param
+# mapping actually reaches the backend (regression guard for the null-tenant bug).
+function Get-OpenApiTenant($H) {
+  $body = (@{ jsonrpc="2.0"; id=10; method="tools/call"; params=@{ name="openapi_readTickets"; arguments=@{ query=@{ tenant="tenant-a" } } } } | ConvertTo-Json -Depth 8)
+  try {
+    $r = Invoke-WebRequest -Method Post -Uri $GatewayMcpUrl -ContentType "application/json" -Headers $H -Body $body -UseBasicParsing
+    $j = ($r.Content -replace '^data: ','' | ConvertFrom-Json)
+    return $j.result.structuredContent.tenant
+  } catch { return "<error>" }
 }
 
 $reader   = & "$PSScriptRoot\get-keycloak-token.ps1" -BaseUrl $KeycloakUrl -User alice-reader   -Password reader-password
@@ -49,6 +71,7 @@ try {
 $rh = New-McpSession $reader
 Check "reader read  (sqlite_read_incidents)"      (Invoke-Tool $rh "sqlite_read_incidents")      "ALLOWED"
 Check "reader read  (openapi_readTickets)"        (Invoke-Tool $rh "openapi_readTickets")        "ALLOWED"
+Check "openapi query-param maps to backend"       (Get-OpenApiTenant $rh)                         "tenant-a"
 Check "reader write (sqlite_write_incident_note)" (Invoke-Tool $rh "sqlite_write_incident_note") "DENIED"
 Check "reader write (http_write_restart_request)" (Invoke-Tool $rh "http_write_restart_request") "DENIED"
 

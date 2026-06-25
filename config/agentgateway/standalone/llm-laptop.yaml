@@ -46,3 +46,34 @@ llm:
       model: qwen2.5:7b
       baseUrl: http://host.docker.internal:11434/v1
       tokenize: true
+  # Backends behind the `resilient` virtual model (M2 failover).
+  # Both point at the live Ollama here so the default demo always serves; the
+  # dedicated failover PROOF (dead primary) lives in llm-m2.yaml + smoke-m2.ps1.
+  # Failover is driven by outlier detection: the `health` policy below evicts a
+  # model after a 5xx/connection failure, so traffic moves to the next priority.
+  - name: ollama-primary
+    provider: ollama
+    params:
+      model: llama3.2:3b
+      baseUrl: http://host.docker.internal:11434/v1
+      tokenize: true
+    health:
+      eviction:
+        consecutiveFailures: 1
+        duration: 30s
+  - name: ollama-backup
+    provider: ollama
+    params:
+      model: llama3.2:3b
+      baseUrl: http://host.docker.internal:11434/v1
+      tokenize: true
+  # Client-facing virtual model: try primary first, fail over to backup.
+  virtualModels:
+  - name: resilient
+    routing:
+      failover:
+        targets:
+        - model: ollama-primary
+          priority: 1
+        - model: ollama-backup
+          priority: 2

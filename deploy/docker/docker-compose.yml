@@ -16,6 +16,22 @@ services:
       - "host.docker.internal:host-gateway"
     profiles: ["laptop"]
 
+  # M2 failover test: ollama-primary is dead (port 11999), backup is real Ollama.
+  agentgateway-llm-m2:
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    command:
+      - -f
+      - /etc/agentgateway/config.llm.yaml
+    ports:
+      - "3003:3000"
+      - "15003:15000"
+      - "15023:15020"
+    volumes:
+      - ../../config/agentgateway/standalone/llm-m2.yaml:/etc/agentgateway/config.llm.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["failover"]
+
   agentgateway-llm:
     image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
     command:

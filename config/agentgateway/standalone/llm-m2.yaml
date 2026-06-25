@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+# M2 LLM resilience — failover proof config.
+# ollama-primary → DEAD endpoint (port 11999, nothing listening).
+# ollama-backup  → real Ollama (port 11434).
+# A call to the "resilient" virtual model MUST fall back to ollama-backup.
+# Use with profile: failover (docker-compose) or docker run for standalone test.
+config:
+  adminAddr: 0.0.0.0:15000
+  statsAddr: 0.0.0.0:15020
+  logging:
+    level: ["info"]
+
+llm:
+  port: 3000
+  policies:
+    apiKey:
+      mode: strict
+      keys:
+      - key: sk-demo-reader-local
+        metadata:
+          user: alice-reader
+          tenant: tenant-a
+  models:
+  - name: ollama-primary
+    provider: ollama
+    params:
+      model: llama3.2:3b
+      baseUrl: http://host.docker.internal:11999/v1   # intentionally dead — proves failover
+      tokenize: true
+    # Outlier detection: any 5xx/connection failure marks this model unhealthy.
+    # After one failure it is evicted, so failover routes to the next priority group.
+    health:
+      eviction:
+        consecutiveFailures: 1
+        duration: 30s
+  - name: ollama-backup
+    provider: ollama
+    params:
+      model: llama3.2:3b
+      baseUrl: http://host.docker.internal:11434/v1   # real Ollama
+      tokenize: true
+  virtualModels:
+  - name: resilient
+    routing:
+      failover:
+        targets:
+        - model: ollama-primary
+          priority: 1
+        - model: ollama-backup
+          priority: 2

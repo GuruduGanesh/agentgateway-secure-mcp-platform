@@ -12,7 +12,8 @@ spec:
             type: PathPrefix
             value: /v1
       backendRefs:
-        - group: gateway.agentgateway.dev
+        # CRD group is agentgateway.dev (NOT gateway.agentgateway.dev). No port:
+        # AgentgatewayBackend is not a Service, so the backendRef port is omitted.
+        - group: agentgateway.dev
           kind: AgentgatewayBackend
           name: ollama-local
-          port: 80

@@ -1,4 +1,9 @@
-apiVersion: gateway.agentgateway.dev/v1alpha1
+# AgentgatewayPolicy — demo traffic policy (CORS) on the LLM route.
+# Validated against the live v1.3.1 CRD (group agentgateway.dev/v1alpha1):
+# CORS lives under spec.traffic.cors (not spec.policy.cors). The traffic block
+# is also where jwtAuthentication, rateLimit, and authorization would go to
+# promote the standalone M4 security model into CRDs.
+apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
   name: local-security-observability
@@ -8,9 +13,11 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: ollama-llm
-  # Demo placeholder: expand with JWT, rate limit, MCP authorization, and telemetry policy
-  # after validating exact v1.3.1 CRD fields in the live cluster.
-  policy:
+  traffic:
     cors:
       allowOrigins:
         - "*"
+      allowHeaders:
+        - "*"
+    # TODO (next M6 iteration): add jwtAuthentication + rateLimit here to mirror
+    # the standalone M4 RBAC/auth once the JWKS source is reachable in-cluster.
