@@ -6,8 +6,6 @@ This repository is a runnable demo architecture, not a fork of agentgateway. The
 
 **Repository:** [GuruduGanesh/agentgateway-secure-mcp-platform](https://github.com/GuruduGanesh/agentgateway-secure-mcp-platform.git)
 
-> Private source files such as `PROJECT_BRIEF.md` and `A1_AgentGateway/` are intentionally ignored and must not be committed.
-
 ## Architecture
 
 ![Architecture](assets/diagrams/architecture.svg)
@@ -82,16 +80,28 @@ flowchart TB
 
 ```text
 agentgateway-secure-mcp-platform/
-  README.md
-  .env.example
-  .gitignore
+  README.md                           # this file — reference-architecture overview
+  LICENSE                             # Apache-2.0 (matches upstream)
+  CONTRIBUTING.md                     # how to contribute + the living-docs rule
+  DEVELOPMENT.md                      # day-to-day developer guide
+  CODE_OF_CONDUCT.md                  # Contributor Covenant
+  SECURITY.md                         # disclosure policy + demo-credential scope
+  CHANGELOG.md                        # notable changes
+  Makefile                            # task runner (GNU make / CI / git-bash)
+  tasks.ps1                           # task runner (Windows-native PowerShell)
+  .env.example                        # public-safe local defaults
+  .gitignore  .gitattributes  .dockerignore
+  .github/
+    CODEOWNERS                        # review ownership
+    dependabot.yml                    # dependency updates
+    PULL_REQUEST_TEMPLATE.md
+    ISSUE_TEMPLATE/                   # bug / feature templates
+    workflows/                        # validate.yml (static CI)
   assets/
     diagrams/                         # public architecture visuals
   config/
-    agentgateway/
-      standalone/                     # standalone data-plane configs
-    identity/
-      keycloak/                       # importable demo realm
+    agentgateway/standalone/          # standalone data-plane configs
+    identity/keycloak/                # importable demo realm
     observability/                    # otel/prometheus/grafana config
   deploy/
     docker/                           # compose entrypoint for local profiles
@@ -101,14 +111,15 @@ agentgateway-secure-mcp-platform/
       helm/                           # agentgateway Helm values
       manifests/                      # Gateway API + agentgateway CRs
   docs/
-    architecture/                     # platform design notes
-    demo/                             # recording runbook
-    operations/                       # local ops and troubleshooting
-    security/                         # identity/RBAC model
+    README.md                         # documentation index (start here)
+    STATUS.md                         # single source of truth (done vs pending)
+    SETUP.md                          # end-to-end from-scratch runbook
+    architecture/  demo/  operations/  security/  blog/
   examples/
     mcp-servers/                      # stdio, HTTP, and OpenAPI tool sources
   tests/
-    smoke/                            # runnable local validation scripts
+    validate.ps1                      # static validation (same as CI)
+    smoke/                            # runnable per-milestone validation scripts
 ```
 
 Why this shape:
@@ -191,6 +202,34 @@ docker compose -f deploy/docker/docker-compose.yml --profile observability --pro
 .\tests\smoke\smoke-llm.ps1 -Model enterprise-reasoning-latest
 ```
 
+## Repeatable Setup (task runner)
+
+The whole demo is driven by one task runner so it reproduces identically on any
+machine — `tasks.ps1` on Windows, `make` everywhere else (both call the same
+`docker compose` + smoke-test commands).
+
+```powershell
+# Windows (PowerShell)
+pwsh ./tasks.ps1 models                       # pull llama3.2:3b
+pwsh ./tasks.ps1 up laptop observability      # start a profile set
+pwsh ./tasks.ps1 test llm                     # run a milestone smoke test
+pwsh ./tasks.ps1 validate                     # static checks (same as CI)
+pwsh ./tasks.ps1 down                         # tear down
+```
+
+```bash
+# macOS / Linux / git-bash / CI (GNU make)
+make models
+make up PROFILES="laptop observability"
+make test-llm
+make validate
+make down
+```
+
+Run `pwsh ./tasks.ps1 help` or `make help` for every verb. The authoritative,
+fully explained from-scratch runbook is [docs/SETUP.md](docs/SETUP.md); the
+documentation map is [docs/README.md](docs/README.md).
+
 ## Current Status
 
 All six milestones are verified end-to-end locally (last full re-run 2026-06-24; agentgateway `v1.3.1`, Ollama `llama3.2:3b`).
@@ -256,6 +295,29 @@ kubectl apply -f deploy/kubernetes/manifests/
 ```
 
 The default Kubernetes path keeps Ollama on the host and reaches it from pods through `host.docker.internal`.
+
+## Documentation
+
+Full map: [docs/README.md](docs/README.md). Key entry points:
+
+| Doc | Purpose |
+| --- | --- |
+| [docs/SETUP.md](docs/SETUP.md) | Authoritative from-scratch setup runbook (software, ports, credentials, troubleshooting) |
+| [docs/STATUS.md](docs/STATUS.md) | Single source of truth — milestone states, work log, open checklist |
+| [docs/demo/DEMO.md](docs/demo/DEMO.md) | On-camera recording flow |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Day-to-day developer guide |
+| [docs/operations/README.md](docs/operations/README.md) | Profiles, common commands, troubleshooting |
+| [docs/security/README.md](docs/security/README.md) | Identity / RBAC model |
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) (and
+[DEVELOPMENT.md](DEVELOPMENT.md)) first — the core rule is that every change keeps the
+[living docs](docs/STATUS.md) honest and the demo runnable on a clean machine. By
+participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). For anything
+security-sensitive, follow [SECURITY.md](SECURITY.md) rather than opening a public
+issue. Static validation (`make validate` / `pwsh ./tasks.ps1 validate`) runs in
+[CI](.github/workflows/validate.yml) on every PR.
 
 ## License
 

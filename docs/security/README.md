@@ -24,4 +24,4 @@ The demo security model is intentionally simple but enterprise-shaped.
 ## Secret Handling
 
 - `.env`, private keys, local databases, logs, traces, and scratch output are ignored.
-- `PROJECT_BRIEF.md` and `A1_AgentGateway/` are private local references and must never be staged.
+- Local-only working files and private notes are git-ignored and never staged.
