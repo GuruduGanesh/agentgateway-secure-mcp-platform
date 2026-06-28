@@ -1,142 +1,202 @@
 # Demo Runbook
 
-This is the 5-8 minute recording path for the local enterprise secure-MCP demo.
+A verified, reproducible walkthrough of the local enterprise secure-MCP platform on
+agentgateway. Every command below was run end-to-end on Windows + Docker Desktop with
+agentgateway `v1.3.1` and Ollama `llama3.2:3b` (last full re-run 2026-06-28, all six
+milestones green). See [../STATUS.md](../STATUS.md) for the milestone source of truth.
 
-## 0. Setup Shot
+The structure is deliberate: a **pre-flight** that warms the heavy pieces off-camera,
+then a tight **on-camera** sequence that runs only fast proofs. That keeps the recorded
+walkthrough in the 5-8 minute window without waiting on image pulls or cluster startup.
 
-Show the repo and explain the promise:
+---
 
-- Fully local.
-- No paid LLM keys.
-- agentgateway as the control point for LLM and MCP traffic.
-- Keycloak for identity, OpenTelemetry for visibility.
+## What you are showing
+
+One local data plane (agentgateway) sitting in front of both LLM and MCP traffic, with:
+
+- Strict API-key auth on the LLM path (no key → 401, valid key → real completion).
+- LLM failover across two backends (dead primary → live backup).
+- Virtual MCP federating three tool servers (stdio-style, HTTP, OpenAPI) behind one endpoint.
+- Keycloak OAuth2/JWT plus tool-level RBAC (reader vs operator, tenant-scoped).
+- Full observability — Prometheus metrics, a Grafana dashboard, Jaeger traces.
+- A Kubernetes promotion on kind with the same gateway as Gateway API + agentgateway CRDs.
+
+All local. No paid keys. Ollama stays on the host the whole time.
+
+---
+
+## Pre-flight (do this BEFORE you hit record)
+
+These steps pull images, warm Keycloak, and create the kind cluster so nothing stalls
+on camera. Budget ~10 minutes the first time, ~2 minutes after images are cached.
 
 ```powershell
-Copy-Item .env.example .env
+cd C:\Ganesh\GaneshPersonal\agentgateway-secure-mcp-platform
+
+# 1. Local env + model
+Copy-Item .env.example .env -Force
 ollama pull llama3.2:3b
-ollama pull qwen2.5:7b
+
+# 2. Warm every Docker profile (LLM + observability + security + failover)
+docker compose -f deploy/docker/docker-compose.yml `
+  --profile observability --profile laptop --profile security --profile failover up -d
+
+# 3. The MCP gateway fetches JWKS at boot and can race ahead of Keycloak.
+#    Wait for the realm, then restart it so it picks up JWKS cleanly.
+do { Start-Sleep 3 } until (
+  try { (Invoke-RestMethod "http://localhost:8080/realms/agentgateway/.well-known/openid-configuration" -TimeoutSec 3).issuer } catch { $null }
+)
+docker compose -f deploy/docker/docker-compose.yml --profile security up -d agentgateway-mcp-secure
+
+# 4. Stand up the Kubernetes promotion (kind + Helm + manifests + a warm-up call)
+kind create cluster --config deploy/kubernetes/kind/kind-cluster.yaml
+.\tests\smoke\smoke-k8s.ps1 -Apply -E2E
 ```
 
-Expected: Ollama has the laptop-safe recording models available. The high-reasoning profile uses `qwen3.6:35b`, but do not record against it unless the workstation can run it comfortably.
+Pre-flight is good when:
 
-## 1. Standalone LLM Gateway
+- `docker compose ps` shows the gateway, observability, tool servers, and Keycloak up.
+- `agentgateway-mcp-secure` is **running** (not exited).
+- `smoke-k8s.ps1 -Apply -E2E` prints a 200 completion through the cluster.
 
-Start observability and agentgateway with the laptop-safe Ollama config.
+Quick health snapshot:
 
 ```powershell
-docker compose -f deploy/docker/docker-compose.yml --profile observability --profile laptop up -d
+docker compose -f deploy/docker/docker-compose.yml ps
+```
+
+---
+
+## On-camera sequence
+
+### 0. Setup shot (~30s)
+
+Show the repo tree and say the promise: one local gateway for LLM + MCP, identity via
+Keycloak, full observability, and a Kubernetes path — all free and local. Point out that
+Ollama runs on the host at `:11434` and the app never talks to it directly.
+
+### 1. M1 — Standalone LLM gateway (~60s)
+
+```powershell
+# No key -> 401 (strict API-key auth)
+try { Invoke-RestMethod -Method Post "http://localhost:3000/v1/chat/completions" `
+  -ContentType "application/json" `
+  -Body '{"model":"laptop-demo","messages":[{"role":"user","content":"hi"}]}' } catch { $_.Exception.Response.StatusCode.value__ }
+
+# Valid Bearer -> 200 + a real llama3.2:3b completion
 .\tests\smoke\smoke-llm.ps1
 ```
 
-On screen, point out:
+**Expected:** `401` first, then `LLM smoke test passed.` with assistant content.
+**Talk track:** the client hits `localhost:3000`, not Ollama. The gateway enforces the
+key and keeps an OpenAI-compatible shape, so existing OpenAI clients just repoint.
 
-- Client calls `localhost:3000`, not Ollama directly.
-- Ollama stays local on `localhost:11434`.
-- The app can keep an OpenAI-compatible API shape.
-
-Expected: HTTP 200 response with assistant content.
-
-## 2. LLM Routing and Budget Narrative
-
-Show `config/agentgateway/standalone/llm-laptop.yaml`, then briefly show `config/agentgateway/standalone/llm.yaml` as the high-reasoning profile.
-
-Talk track:
-
-- The recording model name is the alias `laptop-demo`.
-- The high-reasoning alias is `enterprise-reasoning-latest`.
-- Backends are local Ollama models.
-- API keys and a local token budget are configured.
-- In this local demo, cost is token counting, not real provider spend.
-- Failover and content-based routing remain planned, not shown as working.
-
-Optional:
+### 2. M5 — Observability (~60s)
 
 ```powershell
-ollama pull qwen3.6:35b
-docker compose -f deploy/docker/docker-compose.yml --profile observability --profile llm up -d
-.\tests\smoke\smoke-llm.ps1 -Model enterprise-reasoning-latest
-```
-
-## 3. Local MCP Tool Sources
-
-Start the local MCP sample services through Docker Compose, or run the Node services directly for isolated testing.
-
-```powershell
-docker compose -f deploy/docker/docker-compose.yml --profile security up -d keycloak http-tools openapi-app agentgateway-mcp-secure
-```
-
-In another terminal:
-
-```powershell
-.\tests\smoke\smoke-mcp.ps1
-```
-
-Talk track:
-
-- The demo has one stdio-style tools server, one HTTP tools server, and one REST app with OpenAPI.
-- agentgateway Virtual MCP is configured to federate these into one MCP endpoint.
-- Tool names should remain stable and tenant-aware.
-- Validate the gateway session in the admin UI before claiming the full federation segment in a recording.
-
-## 4. Keycloak and RBAC
-
-Start Keycloak and request tokens.
-
-```powershell
-docker compose -f deploy/docker/docker-compose.yml --profile security up -d keycloak http-tools openapi-app agentgateway-mcp-secure
-.\tests\smoke\get-keycloak-token.ps1 -User alice-reader -Password reader-password
-.\tests\smoke\get-keycloak-token.ps1 -User oliver-operator -Password operator-password
-.\tests\smoke\smoke-rbac.ps1
-```
-
-Expected:
-
-- Reader token contains `tenant-a` and `reader`.
-- Operator token contains `tenant-b` and `operator`.
-- Reader/operator tokens are real.
-- Gateway-side tool authorization is configured with target-level CEL rules; verify the end-to-end tool calls before recording this as complete.
-
-## 5. Observability
-
-Start the telemetry stack.
-
-```powershell
-docker compose -f deploy/docker/docker-compose.yml --profile observability up -d
+# Generate a little traffic, then look at the signals
+$h=@{Authorization="Bearer sk-demo-reader-local"}
+1..5 | % { Invoke-RestMethod -Method Post "http://localhost:3000/v1/chat/completions" -Headers $h `
+  -ContentType "application/json" -Body '{"model":"laptop-demo","messages":[{"role":"user","content":"ping"}],"stream":false}' | Out-Null }
 .\tests\smoke\smoke-observability.ps1
 ```
 
-Open:
+Then open in the browser and narrate:
 
-- Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3001`
-- Jaeger: `http://localhost:16686`
+- Prometheus `http://localhost:9090` → Status ▸ Targets: the `agentgateway` target is **UP**
+  scraping `:15020`. Query `agentgateway_requests_total` and watch it climb.
+- Grafana `http://localhost:3001` (admin/admin) → dashboard **agentgateway Secure MCP Local Demo**.
+- Jaeger `http://localhost:16686` → service `agentgateway`, open a trace.
 
-Talk track:
+**Talk track:** identity, route, backend, and tool call are all tied together in one trace.
 
-- Gateway latency, errors, and admin metrics.
-- MCP tool calls by tenant/tool.
-- Token usage by virtual key or model alias.
-- Traces tie identity, route, backend, and tool call together.
-
-## 6. Kubernetes Promotion
-
-Show the kind and Helm files.
+### 3. M3 — MCP federation (~60s)
 
 ```powershell
-kind create cluster --config deploy/kubernetes/kind/kind-cluster.yaml
-.\tests\smoke\smoke-k8s.ps1 -Apply
+# Federation through the gateway: one endpoint, six prefixed tools
+$op = .\tests\smoke\get-keycloak-token.ps1 -User oliver-operator -Password operator-password
+$H  = @{ Authorization = "Bearer $op"; Accept = "application/json, text/event-stream" }
+$r  = Invoke-WebRequest -Method Post "http://localhost:3002/mcp" -ContentType "application/json" -Headers $H `
+       -Body '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"demo","version":"0"}}}' -UseBasicParsing
+$sid = ([string[]]$r.Headers["Mcp-Session-Id"])[0]
+$H2  = $H + @{ "Mcp-Session-Id" = $sid }
+$lr  = Invoke-WebRequest -Method Post "http://localhost:3002/mcp" -ContentType "application/json" -Headers $H2 `
+       -Body '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' -UseBasicParsing
+(($lr.Content -replace '^data: ','' | ConvertFrom-Json).result.tools).name
 ```
 
-Talk track:
+**Expected:** six tools — `sqlite_read_incidents`, `sqlite_write_incident_note`,
+`http_read_service_health`, `http_write_restart_request`, `openapi_readTickets`,
+`openapi_writeTicket`.
+**Talk track:** three different transports (stdio-style over HTTP, streamable HTTP, and an
+OpenAPI REST app) federated into one Virtual MCP endpoint with stable, prefixed names.
 
-- Gateway API CRDs first.
-- agentgateway CRDs and control plane second.
-- Gateway, routes, backends, and policies last.
-- Ollama remains on the host through `host.docker.internal` for laptop speed.
+### 4. M4 — Security / RBAC (~75s)
 
-## Closing
+```powershell
+.\tests\smoke\smoke-rbac.ps1
+```
 
-Close honestly:
+**Expected:** 7/7 — no token → 401; `alice-reader` (tenant-a) can call read tools but is
+**denied** writes (and writes are filtered from her `tools/list`); the OpenAPI query param
+round-trips to the backend; `oliver-operator` (tenant-b) can call writes.
+**Talk track:** authorization is listener-level CEL on the bare tool name. Same gateway,
+different identity, different allowed tools — least privilege, tenant-aware.
 
-- This demo proves the laptop-safe LLM path and shows the configured security/observability/MCP architecture honestly.
-- Before production: TLS, HA, real identity groups, real policy review, external secrets, SLOs, and GitOps.
+### 5. M2 — LLM failover (~45s)
+
+```powershell
+.\tests\smoke\smoke-m2.ps1
+```
+
+**Expected:** 3/3 — the `resilient` virtual model prefers a dead primary (`:11999`); the
+first cold request trips the breaker (a 503), then `health.eviction` evicts it and traffic
+rides the live backup (`:11434`); a direct call to the dead primary fails; no-auth → 401.
+**Talk track:** failover here is outlier detection, not in-line retry — the honest behavior
+is "first cold request surfaces the failure, steady-state traffic is on the backup."
+
+### 6. M6 — Kubernetes promotion (~60s)
+
+```powershell
+.\tests\smoke\smoke-k8s.ps1 -E2E
+```
+
+**Expected:** GatewayClass Accepted, Gateway **Programmed=True**, Backend **Accepted=True**,
+Policy **Accepted+Attached=True**, then a 200 completion through the in-cluster gateway.
+**Talk track:** the same gateway promoted to Kubernetes as Gateway API + agentgateway CRDs.
+Install order is Gateway API CRDs → agentgateway CRDs + control plane → Gateway/Route/
+Backend/Policy. kind has no cloud LoadBalancer, so we reach it with `port-forward`, and the
+pod reaches host Ollama through `host.docker.internal`.
+
+### Closing (~30s)
+
+Be honest about the line between demo and production. This proves the secure LLM + MCP
+paths, RBAC, observability, and the Kubernetes promotion locally. Before production:
+TLS/mTLS, HA control/data planes, real enterprise identity groups, external secret
+management, policy review, SLOs, and GitOps for the CRDs.
+
+---
+
+## Teardown
+
+```powershell
+# Docker stacks
+docker compose -f deploy/docker/docker-compose.yml `
+  --profile observability --profile laptop --profile security --profile failover down
+
+# Kubernetes
+kind delete cluster --name agentgateway-secure-mcp
+```
+
+---
+
+## Troubleshooting (gotchas seen during verification)
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `agentgateway-mcp-secure` exited (1) right after start | It fetches JWKS at boot and raced ahead of Keycloak | Re-run `docker compose ... --profile security up -d agentgateway-mcp-secure` once the realm endpoint answers (pre-flight step 3) |
+| M2 first call returns 503 | Expected — the cold request trips the breaker on the dead primary | The smoke test primes the breaker, then asserts steady-state success on the backup |
+| `smoke-k8s.ps1 -Apply` says "Gateway not Programmed" | Status checked before the control plane finished rolling out | The script now waits for rollout + Programmed after `-Apply`; just re-run `smoke-k8s.ps1 -E2E` |
+| OpenAPI tool returns `tenant=null` | agentgateway nests OpenAPI params by location | Call with `arguments={query:{tenant:...}}`, not a flat `{tenant:...}` |
+| Prometheus `agentgateway` target down | Scrape pointed at the admin port | Metrics are on the stats listener `:15020`, not `:15000` |

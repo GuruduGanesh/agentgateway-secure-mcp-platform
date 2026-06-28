@@ -20,7 +20,7 @@ Maintenance convention (**mandatory, every change**): in the *same* change that 
 
 Nothing is "done" until its work-log row says ✅ and its checklist box is `[x]`. Start a step → add a 🔄 row; finish it → flip to ✅. Never silently complete work without recording it here.
 
-Last local validation: 2026-06-24 (full M1–M6 re-run) on Windows + Docker Desktop, agentgateway `v1.3.1`, Ollama `llama3.2:3b`.
+Last local validation: 2026-06-28 (full M1–M6 re-run) on Windows + Docker Desktop, agentgateway `v1.3.1`, Ollama `llama3.2:3b`.
 
 | Milestone | State | What is true now | Next work |
 | --- | --- | --- | --- |
@@ -79,6 +79,7 @@ Running journal of every work step and its state. **Append a dated entry wheneve
 | 2026-06-24 | Doc reconciliation | ✅ done | Fixed stale `smoke-rbac` 6/6→7/7 in milestone table + checklist; refreshed README "Current Status" table to match verified reality. |
 | 2026-06-24 | Added Apache-2.0 `LICENSE` + README License section | ✅ done | Compliance: public repo now carries Apache-2.0 (matches upstream); states reference-only/not-a-fork. |
 | 2026-06-25 | Governance/process scaffolding removed (kept the repo demo-focused) | ✅ done | Dropped the enterprise governance/process layer (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `DEVELOPMENT.md`, `CHANGELOG.md`, `.github/`, `Makefile`, `tasks.ps1`, `tests/validate.ps1`, `.gitattributes`, `.dockerignore`, `docs/README.md`) as out of scope for a local demo. README references trimmed (folder tree, setup section, docs map, contributing). The demo runs on plain `docker compose` + `tests/smoke/`. |
+| 2026-06-28 | Full M1–M6 E2E re-verification + demo runbook rewrite | ✅ done | All six green in one session: M1 401/200 + real completion + metrics `:15020`; M5 Prom target UP (`agentgateway_requests_total`), Grafana dashboard `agentgateway Secure MCP Local Demo` + Prometheus datasource, Jaeger 7 `agentgateway` traces; M3 6 prefixed tools through the gateway; M4 `smoke-rbac.ps1` 7/7; M2 `smoke-m2.ps1` 3/3; M6 kind + Helm v1.3.1, Gateway Programmed + Backend/Policy Accepted+Attached, `smoke-k8s.ps1 -E2E` 200 through the in-cluster gateway. Confirmed the JWKS-race gotcha (mcp-secure exited → restart fixes). Rewrote `docs/demo/DEMO.md` as a verified pre-flight + on-camera runbook. Fixed `smoke-k8s.ps1` to wait for control-plane rollout + Gateway Programmed after `-Apply`. |
 | — | Blog draft revision with real gotchas | ⏳ open | |
 
 ## Open action items / checklist

@@ -195,7 +195,7 @@ from-scratch runbook is [docs/SETUP.md](docs/SETUP.md).
 
 ## Current Status
 
-All six milestones are verified end-to-end locally (last full re-run 2026-06-24; agentgateway `v1.3.1`, Ollama `llama3.2:3b`).
+All six milestones are verified end-to-end locally (last full re-run 2026-06-28; agentgateway `v1.3.1`, Ollama `llama3.2:3b`).
 
 | Milestone | State | Evidence |
 | --- | --- | --- |

@@ -27,6 +27,16 @@ if ($Apply) {
   helm upgrade --install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.3.1 -n $sys --create-namespace
   helm upgrade --install agentgateway     oci://cr.agentgateway.dev/charts/agentgateway      --version v1.3.1 -n $sys -f deploy/kubernetes/helm/values.yaml
   kubectl apply -f deploy/kubernetes/manifests/
+
+  # The control plane needs a moment to roll out and program the Gateway. Without
+  # this wait, a fresh -Apply checks status too early and reports "not Programmed".
+  Write-Host "Waiting for control plane rollout + Gateway Programmed..." -ForegroundColor Cyan
+  kubectl -n $sys rollout status deploy/agentgateway --timeout=180s
+  foreach ($i in 1..30) {
+    $p = (kubectl -n $ns get gateway local-agentgateway -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>$null)
+    if ($p -eq "True") { break }
+    Start-Sleep 4
+  }
 }
 
 Write-Host "=== Control plane + Gateway API state ===" -ForegroundColor Cyan
