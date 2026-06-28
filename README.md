@@ -82,6 +82,7 @@ flowchart TB
 agentgateway-secure-mcp-platform/
   README.md                           # this file — reference-architecture overview
   LICENSE                             # Apache-2.0 (matches upstream)
+  demo.ps1  demo.cmd                  # one-click local demo launcher
   .env.example                        # public-safe local defaults
   .gitignore
   assets/
@@ -149,6 +150,22 @@ Why this shape:
 - Optional for local sample MCP servers: Node.js 20+.
 
 RAM guide: the recording path uses `llama3.2:3b` by default so the demo stays reproducible on a normal laptop. The high-reasoning profile uses `qwen3.6:35b` and documents `gpt-oss:120b` / `deepseek-r1:671b-0528-q4_K_M` as workstation-class references.
+
+## One-Click Demo
+
+The fastest path: run the launcher. It checks Docker and Ollama, brings up every
+profile, handles the Keycloak/JWKS boot race, and prints the demo steps, URLs, and
+credentials.
+
+```powershell
+pwsh ./demo.ps1                  # bring up the Docker demo + print the guide
+pwsh ./demo.ps1 -Verify         # also run the smoke tests to prove each milestone
+pwsh ./demo.ps1 -WithKubernetes # also set up the kind/Helm M6 promotion
+pwsh ./demo.ps1 -Down           # tear everything down (Docker + kind)
+```
+
+On Windows you can also just double-click `demo.cmd`. The full on-camera talk track
+is in [docs/demo/DEMO.md](docs/demo/DEMO.md). The manual step-by-step is below.
 
 ## Quickstart: Standalone LLM Gateway
 

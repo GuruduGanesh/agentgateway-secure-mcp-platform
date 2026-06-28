@@ -28,6 +28,11 @@ All local. No paid keys. Ollama stays on the host the whole time.
 
 ## Pre-flight (do this BEFORE you hit record)
 
+**Fast path:** `pwsh ./demo.ps1` (or double-click `demo.cmd`) does all of the Docker
+pre-flight below — checks, compose up, the Keycloak/JWKS restart, readiness — and prints
+the URLs and credentials. Add `-WithKubernetes` to also set up M6, and `-Verify` to run
+the smoke tests. The manual steps below are the same thing spelled out.
+
 These steps pull images, warm Keycloak, and create the kind cluster so nothing stalls
 on camera. Budget ~10 minutes the first time, ~2 minutes after images are cached.
 
