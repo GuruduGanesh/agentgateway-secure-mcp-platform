@@ -1,6 +1,10 @@
 # --- Local-only project files (never check in) ---
 PROJECT_BRIEF.md
 A1_AgentGateway/
+A2_ComputerOrg/
+
+# --- Local tooling config (machine-specific, never check in) ---
+.claude/
 
 # --- Secrets / environment ---
 .env
