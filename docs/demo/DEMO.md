@@ -26,6 +26,101 @@ All local. No paid keys. Ollama stays on the host the whole time.
 
 ---
 
+## The demo at a glance
+
+### What we mean by "the demo"
+
+"The demo" is the running local platform — agentgateway sitting in front of local LLM and
+MCP traffic, with identity, RBAC, observability, and a Kubernetes promotion. **Testing** is
+the set of smoke tests under `tests/smoke/` that assert each milestone behaves correctly.
+**Demonstrating** is walking a viewer through that proven behavior on screen. So we test to
+prove it works, then demonstrate what it means.
+
+### Systems involved
+
+| System | Role in the demo | Endpoint |
+| --- | --- | --- |
+| agentgateway — laptop (M1) | LLM data plane, strict API-key auth, OpenAI-compatible | `:3000` |
+| agentgateway — failover (M2) | LLM data plane with a dead primary + live backup | `:3003` |
+| agentgateway — mcp-secure (M3/M4) | MCP data plane, JWT auth + CEL RBAC, Virtual MCP | `:3002/mcp` |
+| Ollama (on host) | Local model runtime serving `llama3.2:3b` | host `:11434` |
+| Keycloak | OAuth2/OIDC identity provider, issues the JWTs | `:8080` |
+| sqlite-tools | stdio-style MCP tool server (read/write incidents) | `:7003` |
+| http-tools | streamable-HTTP MCP tool server (service health/restart) | `:7001` |
+| openapi-app | REST app exposed as MCP tools (tickets) | `:7002` |
+| OTel Collector | Receives gateway traces, exports to Jaeger | `:4317/:4318` |
+| Prometheus | Scrapes gateway metrics from the stats listener `:15020` | `:9090` |
+| Grafana | Dashboards over the Prometheus datasource | `:3001` |
+| Jaeger | Distributed-trace UI | `:16686` |
+| kind + Helm (M6) | Kubernetes promotion of the same gateway as CRDs | port-forward |
+
+### How they are connected
+
+```mermaid
+flowchart LR
+  Client["Client / smoke test"]
+  subgraph Gateways["agentgateway data plane"]
+    LLM[":3000 LLM"]
+    FO[":3003 failover"]
+    MCP[":3002 secure MCP"]
+  end
+  Ollama["Ollama (host :11434)\nllama3.2:3b"]
+  KC["Keycloak :8080\nJWT issuer"]
+  subgraph Tools["Virtual MCP tool servers"]
+    SQ["sqlite-tools :7003"]
+    HT["http-tools :7001"]
+    OA["openapi-app :7002"]
+  end
+  subgraph Obs["Observability"]
+    OT["OTel Collector"]
+    PR["Prometheus :9090"]
+    GR["Grafana :3001"]
+    JG["Jaeger :16686"]
+  end
+
+  Client -->|API key| LLM --> Ollama
+  Client -->|API key| FO --> Ollama
+  Client -->|JWT| MCP --> SQ & HT & OA
+  KC -->|JWKS / token| MCP
+  Gateways -->|traces| OT --> JG
+  PR -->|scrape :15020| Gateways
+  GR --> PR
+```
+
+The client never talks to Ollama or the tool servers directly — every request goes through
+a gateway that authenticates it, applies policy, routes it, and emits metrics and traces.
+
+### Sequence of events
+
+1. **Pre-flight** brings the stack up. Keycloak imports the realm, each gateway loads its
+   config, and `agentgateway-mcp-secure` is restarted so it fetches JWKS after Keycloak is ready.
+2. **LLM call (M1):** client sends an OpenAI-compatible request to `:3000` with an API key.
+   The gateway rejects no-key calls (401), authenticates a valid key, forwards to host Ollama,
+   and returns a real completion.
+3. **Observability (M5):** that traffic increments `agentgateway_requests_total` (scraped by
+   Prometheus, shown in Grafana) and produces traces exported through the OTel Collector to Jaeger.
+4. **MCP federation (M3):** client gets a JWT from Keycloak, opens an MCP session to `:3002`,
+   and `tools/list` returns six tools federated from three servers with stable `sqlite_/http_/openapi_` prefixes.
+5. **RBAC (M4):** the same endpoint, different identity — `alice-reader` can call read tools but
+   is denied writes, while `oliver-operator` can write. Authorization is listener-level CEL on the bare tool name.
+6. **Failover (M2):** the `resilient` virtual model on `:3003` prefers a dead primary. The first
+   cold request trips the breaker, `health.eviction` evicts it, and steady-state traffic rides the live backup.
+7. **Kubernetes (M6):** the same gateway, promoted to kind as Gateway API + agentgateway CRDs.
+   A port-forwarded request flows through the in-cluster gateway to host Ollama via `host.docker.internal`.
+
+### What each step proves
+
+| Step | We are testing | We are demonstrating |
+| --- | --- | --- |
+| M1 | Auth gate + real completion through the gateway | One governed front door for LLM traffic |
+| M5 | Metrics scraped, dashboard live, traces received | Full visibility into every request |
+| M3 | Six tools federated and prefixed through one endpoint | Virtual MCP across mixed transports |
+| M4 | Reader/operator allow-deny, tenant-scoped, 7/7 | Least-privilege, multi-tenant tool access |
+| M2 | Dead primary → live backup, 3/3 | Resilient LLM routing |
+| M6 | Gateway Programmed + live call on kind | A real promotion path to Kubernetes |
+
+---
+
 ## Pre-flight (do this BEFORE you hit record)
 
 **Fast path:** `pwsh ./demo.ps1` (or double-click `demo.cmd`) does all of the Docker
