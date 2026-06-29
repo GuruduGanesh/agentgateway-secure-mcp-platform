@@ -263,6 +263,65 @@ Start it with:
 docker compose -f deploy/docker/docker-compose.yml --profile observability up -d
 ```
 
+## Accessing Each Component Manually
+
+Every piece of the stack is reachable on `localhost` with a fixed port. Use this table to
+open any component on its own and check it by hand. All credentials are local demo defaults
+only.
+
+| Component | URL | How to log in / authenticate | What to check |
+| --- | --- | --- | --- |
+| Ollama (host) | `http://localhost:11434` | None — runs on the host, no auth | `http://localhost:11434/api/tags` lists pulled models (expect `llama3.2:3b`) |
+| LLM gateway (M1) | `http://localhost:3000/v1/chat/completions` | `Authorization: Bearer sk-demo-reader-local` | No header → 401, valid key → 200 completion |
+| Failover gateway (M2) | `http://localhost:3003/v1/chat/completions` | `Authorization: Bearer sk-demo-reader-local` | Same as M1, but routed through the `resilient` virtual model |
+| Secure MCP gateway (M3/M4) | `http://localhost:3002/mcp` | `Authorization: Bearer <JWT>` from Keycloak (see below) | `initialize` returns an `Mcp-Session-Id`, `tools/list` returns 6 prefixed tools |
+| Gateway admin UI | `http://localhost:15000` | None | Live config/listeners (no `/metrics` here) |
+| Gateway metrics | `http://localhost:15020/metrics` | None | `agentgateway_*` Prometheus metrics (this is what Prometheus scrapes) |
+| sqlite-tools server | `http://localhost:7003/healthz` | None — internal tool server | `ok`, and `/mcp` speaks MCP |
+| http-tools server | `http://localhost:7001/healthz` | None — internal tool server | `ok`, and `/mcp` speaks MCP |
+| openapi-app server | `http://localhost:7002/openapi.yaml` | None — internal tool server | OpenAPI spec, and `/tickets` returns sample data |
+| Keycloak admin console | `http://localhost:8080` | `admin` / `admin` | Realm `agentgateway`, users `alice-reader` and `oliver-operator` |
+| Prometheus | `http://localhost:9090` | None | **Status ▸ Targets** → the `agentgateway` target is **UP**, query `agentgateway_requests_total` |
+| Grafana | `http://localhost:3001` | `admin` / `admin` | Dashboard **agentgateway Secure MCP Local Demo**, Prometheus datasource |
+| Jaeger UI | `http://localhost:16686` | None | Service `agentgateway`, open a trace |
+| OTel Collector | `http://localhost:8889/metrics` | None — no UI | Collector's own prom export (OTLP in on `4317`/`4318`) |
+
+### Logging into the browser UIs
+
+- **Grafana** — open `http://localhost:3001`, sign in with `admin` / `admin` (it may ask you
+  to set a new password — skip is fine for local). The demo dashboard and Prometheus datasource
+  are provisioned automatically.
+- **Keycloak admin console** — open `http://localhost:8080`, click **Administration Console**,
+  sign in with `admin` / `admin`. Switch the realm selector from `master` to `agentgateway` to
+  see the demo users, roles, and client.
+- **Prometheus / Jaeger** — no login. Open the URL and use the UI directly.
+
+### Getting a Bearer token for the gateways
+
+The LLM gateways take a static API key — just send the header:
+
+```powershell
+$h = @{ Authorization = "Bearer sk-demo-reader-local" }
+Invoke-RestMethod -Method Post "http://localhost:3000/v1/chat/completions" -Headers $h `
+  -ContentType "application/json" `
+  -Body '{"model":"laptop-demo","messages":[{"role":"user","content":"hi"}],"stream":false}'
+```
+
+The secure MCP gateway takes a real Keycloak JWT. Mint one with the helper, then call `/mcp`:
+
+```powershell
+# reader (tenant-a) or operator (tenant-b)
+$token = .\tests\smoke\get-keycloak-token.ps1 -User alice-reader   -Password reader-password
+$token = .\tests\smoke\get-keycloak-token.ps1 -User oliver-operator -Password operator-password
+```
+
+| Identity | Username / password | Tenant / role |
+| --- | --- | --- |
+| Reader API key | `sk-demo-reader-local` | LLM gateway only |
+| Operator API key | `sk-demo-operator-local` | LLM gateway only |
+| Keycloak reader | `alice-reader` / `reader-password` | `tenant-a`, role `reader` |
+| Keycloak operator | `oliver-operator` / `operator-password` | `tenant-b`, role `operator` |
+
 ## Kubernetes Promotion
 
 The Kubernetes milestone uses kind. Install order matters:
