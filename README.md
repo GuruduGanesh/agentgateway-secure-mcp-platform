@@ -6,6 +6,29 @@ This repository is a runnable demo architecture, not a fork of agentgateway. The
 
 **Repository:** [GuruduGanesh/agentgateway-secure-mcp-platform](https://github.com/GuruduGanesh/agentgateway-secure-mcp-platform.git)
 
+## What This Project Shows
+
+This project is a local demo platform for agentgateway.
+
+In simple terms, it shows how a company could put one secure gateway in front of AI models and MCP tools, so agents do not directly call everything on their own.
+
+The demo uses agentgateway as the front door for two kinds of traffic:
+
+- **LLM traffic** — apps send OpenAI-style requests to agentgateway, and agentgateway routes them to local Ollama models like `llama3.2:3b`.
+- **MCP tool traffic** — agents call MCP tools through agentgateway instead of calling each tool server directly. The demo has multiple tool sources behind one Virtual MCP endpoint.
+
+The goal is to prove that agentgateway can be used for a serious enterprise-style AI platform, not just a simple toy demo. In real companies, AI agents need access to tools, APIs, databases, documents, and internal systems. That creates important platform questions:
+
+- Who is allowed to call which tool?
+- Can a read-only user accidentally perform a write action?
+- Can one tenant access another tenant's data?
+- Can platform teams see what the AI agent did?
+- Can traffic be routed, rate-limited, and observed?
+
+This project answers those questions with a working local setup. It shows agentgateway acting as a secure control point for AI and MCP traffic: a client sends a request, agentgateway enforces authentication and policy, traffic is routed to local models or tools, unauthorized actions are denied, and Prometheus, Grafana, and Jaeger provide visibility.
+
+The short version: this is a hands-on enterprise secure-MCP demo for agentgateway. It shows how to put a secure, observable, policy-driven gateway in front of local LLMs and MCP tools, so AI agents can be powerful without becoming uncontrolled.
+
 ## Architecture
 
 ![Architecture](assets/diagrams/architecture.svg)
@@ -235,6 +258,7 @@ All six milestones are verified end-to-end locally (last full re-run 2026-06-28;
 6. Kubernetes: kind/Helm promotion with the live agentgateway CRDs; a real LLM call flows through the in-cluster gateway (verified). Promoting M4 JWT/RBAC into `spec.traffic` CRDs remains the one open stretch item.
 
 Full runbook: [docs/demo/DEMO.md](docs/demo/DEMO.md).
+Visual proof screenshots are included in the demo runbook: [docs/demo/DEMO.md#visual-proof](docs/demo/DEMO.md#visual-proof).
 
 ## Security Model
 

@@ -121,6 +121,44 @@ a gateway that authenticates it, applies policy, routes it, and emits metrics an
 
 ---
 
+## Visual Proof
+
+The images below are the visual anchors for the recorded demo. Keep the README focused
+on the architecture and quickstart; use this section when you want a start-to-end visual
+story for the platform.
+
+### Architecture
+
+![agentgateway secure MCP platform architecture](../../assets/diagrams/architecture.svg)
+
+### Start-To-End Demo Gallery
+
+| 0. Local stack running | 1. LLM auth + local completion |
+| --- | --- |
+| ![Docker Compose stack running](../../assets/screenshots/demo-stack-running.png) | ![LLM gateway auth and local Ollama completion](../../assets/screenshots/llm-auth-completion.png) |
+
+| 2. MCP federation | 3. Tool RBAC |
+| --- | --- |
+| ![MCP tools list through agentgateway](../../assets/screenshots/mcp-tools-list.png) | ![Reader and operator RBAC smoke test](../../assets/screenshots/rbac-smoke.png) |
+
+| 4. LLM failover | 5. Kubernetes promotion |
+| --- | --- |
+| ![LLM failover smoke test](../../assets/screenshots/failover-smoke.png) | ![Kubernetes Gateway API E2E proof](../../assets/screenshots/kubernetes-e2e.png) |
+
+| 6. Prometheus target health | 7. Prometheus request metrics |
+| --- | --- |
+| ![Prometheus agentgateway target health](../../assets/screenshots/prometheus-targets.png) | ![Prometheus agentgateway request metrics](../../assets/screenshots/prometheus-request-metrics.png) |
+
+| 8. Grafana dashboard | 9. Jaeger traces |
+| --- | --- |
+| ![Grafana agentgateway Secure MCP dashboard](../../assets/screenshots/grafana-dashboard.png) | ![Jaeger traces for agentgateway](../../assets/screenshots/jaeger-agentgateway-traces.png) |
+
+Use these as backup visuals in the recording or as still images for a blog post, slide
+deck, or social preview. The strongest live demo is still the command output plus the UI
+pages themselves, but this gallery lets someone understand the whole proof path at a glance.
+
+---
+
 ## Pre-flight (do this BEFORE you hit record)
 
 **Fast path:** `pwsh ./demo.ps1` (or double-click `demo.cmd`) does all of the Docker
