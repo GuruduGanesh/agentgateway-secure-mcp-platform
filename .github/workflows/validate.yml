@@ -1,0 +1,36 @@
+name: Validate local demo configuration
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Parse PowerShell smoke and launcher scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path tests/smoke -Filter '*.ps1' | ForEach-Object {
+            [void][scriptblock]::Create((Get-Content -LiteralPath $_.FullName -Raw))
+          }
+          [void][scriptblock]::Create((Get-Content -LiteralPath 'demo.ps1' -Raw))
+
+      - name: Check JavaScript sample servers
+        run: |
+          node --check examples/mcp-servers/sqlite-tools/server.js
+          node --check examples/mcp-servers/http-tools/server.js
+          node --check examples/mcp-servers/openapi-app/server.js
+
+      - name: Validate every Compose profile
+        shell: bash
+        run: |
+          for profile in laptop failover llm mcp security observability; do
+            docker compose --env-file .env.example -f deploy/docker/docker-compose.yml --profile "$profile" config --quiet
+          done

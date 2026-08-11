@@ -1,27 +1,24 @@
 import http from "node:http";
 
 const port = Number(process.env.HTTP_TOOLS_PORT ?? 7001);
+const tenant = process.env.TENANT_SCOPE;
+if (!tenant) throw new Error("TENANT_SCOPE is required for tenant-scoped MCP tools");
 
 const tools = [
   {
     name: "read_service_health",
-    description: "Read synthetic service health for a tenant.",
-    inputSchema: {
-      type: "object",
-      properties: { tenant: { type: "string" } },
-      required: ["tenant"]
-    }
+    description: "Read synthetic service health for this target's tenant scope.",
+    inputSchema: { type: "object", properties: {} }
   },
   {
     name: "write_restart_request",
-    description: "Create a synthetic restart request for an operator.",
+    description: "Create a synthetic restart request for this target's tenant scope.",
     inputSchema: {
       type: "object",
       properties: {
-        tenant: { type: "string" },
         service: { type: "string" }
       },
-      required: ["tenant", "service"]
+      required: ["service"]
     }
   }
 ];
@@ -72,7 +69,7 @@ const server = http.createServer(async (req, res) => {
         jsonrpc: "2.0",
         id,
         result: {
-          content: [{ type: "text", text: JSON.stringify({ tenant: params.arguments?.tenant, service: "payments", status: "healthy" }) }]
+          content: [{ type: "text", text: JSON.stringify({ tenant, service: "payments", status: "healthy" }) }]
         }
       });
       return;
@@ -82,7 +79,7 @@ const server = http.createServer(async (req, res) => {
         jsonrpc: "2.0",
         id,
         result: {
-          content: [{ type: "text", text: JSON.stringify({ tenant: params.arguments?.tenant, service: params.arguments?.service, requested: true }) }]
+          content: [{ type: "text", text: JSON.stringify({ tenant, service: params.arguments?.service, requested: true }) }]
         }
       });
       return;

@@ -2,7 +2,7 @@
 
 A verified, reproducible walkthrough of the local enterprise secure-MCP platform on
 agentgateway. Every command below was run end-to-end on Windows + Docker Desktop with
-agentgateway `v1.3.1` and Ollama `llama3.2:3b` (last full re-run 2026-06-28, all six
+agentgateway `v1.4.0` and Ollama `llama3.2:3b` (last full re-run 2026-08-11, all six
 milestones green). See [../STATUS.md](../STATUS.md) for the milestone source of truth.
 
 The structure is deliberate: a **pre-flight** that warms the heavy pieces off-camera,
@@ -18,7 +18,7 @@ One local data plane (agentgateway) sitting in front of both LLM and MCP traffic
 - Strict API-key auth on the LLM path (no key → 401, valid key → real completion).
 - LLM failover across two backends (dead primary → live backup).
 - Virtual MCP federating three tool servers (stdio-style, HTTP, OpenAPI) behind one endpoint.
-- Keycloak OAuth2/JWT plus tool-level RBAC (reader vs operator, tenant-scoped).
+- Keycloak OAuth2/JWT plus tool-level RBAC (reader vs operator, with tenant claims).
 - Full observability — Prometheus metrics, a Grafana dashboard, Jaeger traces.
 - A Kubernetes promotion on kind with the same gateway as Gateway API + agentgateway CRDs.
 
@@ -45,9 +45,9 @@ prove it works, then demonstrate what it means.
 | agentgateway — mcp-secure (M3/M4) | MCP data plane, JWT auth + CEL RBAC, Virtual MCP | `:3002/mcp` |
 | Ollama (on host) | Local model runtime serving `llama3.2:3b` | host `:11434` |
 | Keycloak | OAuth2/OIDC identity provider, issues the JWTs | `:8080` |
-| sqlite-tools | stdio-style MCP tool server (read/write incidents) | `:7003` |
-| http-tools | streamable-HTTP MCP tool server (service health/restart) | `:7001` |
-| openapi-app | REST app exposed as MCP tools (tickets) | `:7002` |
+| sqlite-tools | Two tenant-scoped stdio-style MCP tool servers (read/write incidents) | Docker network only |
+| http-tools | Two tenant-scoped streamable-HTTP MCP tool servers (service health/restart) | Docker network only |
+| openapi-app | Two tenant-scoped REST applications exposed as MCP tools (tickets) | Docker network only |
 | OTel Collector | Receives gateway traces, exports to Jaeger | `:4317/:4318` |
 | Prometheus | Scrapes gateway metrics from the stats listener `:15020` | `:9090` |
 | Grafana | Dashboards over the Prometheus datasource | `:3001` |
@@ -66,10 +66,10 @@ flowchart LR
   end
   Ollama["Ollama (host :11434)\nllama3.2:3b"]
   KC["Keycloak :8080\nJWT issuer"]
-  subgraph Tools["Virtual MCP tool servers"]
-    SQ["sqlite-tools :7003"]
-    HT["http-tools :7001"]
-    OA["openapi-app :7002"]
+  subgraph Tools["Virtual MCP tool servers - Docker network only"]
+    SQ["sqlite-tools - tenant-a and tenant-b"]
+    HT["http-tools - tenant-a and tenant-b"]
+    OA["openapi-app - tenant-a and tenant-b"]
   end
   subgraph Obs["Observability"]
     OT["OTel Collector"]
@@ -92,17 +92,20 @@ a gateway that authenticates it, applies policy, routes it, and emits metrics an
 
 ### Sequence of events
 
-1. **Pre-flight** brings the stack up. Keycloak imports the realm, each gateway loads its
-   config, and `agentgateway-mcp-secure` is restarted so it fetches JWKS after Keycloak is ready.
+1. **Pre-flight** brings the stack up. Keycloak imports the realm, Compose waits for its
+   health endpoint, and `agentgateway-mcp-secure` starts only when JWKS is ready.
 2. **LLM call (M1):** client sends an OpenAI-compatible request to `:3000` with an API key.
    The gateway rejects no-key calls (401), authenticates a valid key, forwards to host Ollama,
    and returns a real completion.
 3. **Observability (M5):** that traffic increments `agentgateway_requests_total` (scraped by
    Prometheus, shown in Grafana) and produces traces exported through the OTel Collector to Jaeger.
 4. **MCP federation (M3):** client gets a JWT from Keycloak, opens an MCP session to `:3002`,
-   and `tools/list` returns six tools federated from three servers with stable `sqlite_/http_/openapi_` prefixes.
+    and `tools/list` returns tenant-prefixed tools federated from three server types. A reader sees its
+    three read tools; an operator sees six tools for its own tenant.
 5. **RBAC (M4):** the same endpoint, different identity — `alice-reader` can call read tools but
-   is denied writes, while `oliver-operator` can write. Authorization is listener-level CEL on the bare tool name.
+    is denied writes, while `oliver-operator` can write. Unavailable tools are filtered and direct calls
+    return JSON-RPC `-32602` (`Unknown tool`), which is the gateway's policy-rejection mechanism rather
+    than an HTTP 403. Authorization is listener-level CEL on the bare tool name.
 6. **Failover (M2):** the `resilient` virtual model on `:3003` prefers a dead primary. The first
    cold request trips the breaker, `health.eviction` evicts it, and steady-state traffic rides the live backup.
 7. **Kubernetes (M6):** the same gateway, promoted to kind as Gateway API + agentgateway CRDs.
@@ -114,8 +117,8 @@ a gateway that authenticates it, applies policy, routes it, and emits metrics an
 | --- | --- | --- |
 | M1 | Auth gate + real completion through the gateway | One governed front door for LLM traffic |
 | M5 | Metrics scraped, dashboard live, traces received | Full visibility into every request |
-| M3 | Six tools federated and prefixed through one endpoint | Virtual MCP across mixed transports |
-| M4 | Reader/operator allow-deny, tenant-scoped, 7/7 | Least-privilege, multi-tenant tool access |
+| M3 | Tenant-prefixed tools federated through one endpoint; the visible menu is identity scoped | Virtual MCP across mixed transports |
+| M4 | Role and tenant isolation through tenant-scoped backends, 13 checks | Verified least privilege: each principal receives only its tenant's tools; direct cross-tenant calls and unauthorized writes are rejected |
 | M2 | Dead primary → live backup, 3/3 | Resilient LLM routing |
 | M6 | Gateway Programmed + live call on kind | A real promotion path to Kubernetes |
 
@@ -123,7 +126,7 @@ a gateway that authenticates it, applies policy, routes it, and emits metrics an
 
 ## Visual Proof
 
-The images below are the visual anchors for the recorded demo. Keep the README focused
+The images below are historical visual anchors recorded on 2026-07-01. They illustrate the demo flow but are not evidence for the v1.4.0 re-validation; use the current smoke-test output and `docs/STATUS.md` for that evidence. Keep the README focused
 on the architecture and quickstart; use this section when you want a start-to-end visual
 story for the platform.
 
@@ -162,7 +165,7 @@ pages themselves, but this gallery lets someone understand the whole proof path 
 ## Pre-flight (do this BEFORE you hit record)
 
 **Fast path:** `pwsh ./demo.ps1` (or double-click `demo.cmd`) does all of the Docker
-pre-flight below — checks, compose up, the Keycloak/JWKS restart, readiness — and prints
+pre-flight below — checks, health-gated compose startup, readiness — and prints
 the URLs and credentials. Add `-WithKubernetes` to also set up M6, and `-Verify` to run
 the smoke tests. The manual steps below are the same thing spelled out.
 
@@ -177,15 +180,15 @@ Copy-Item .env.example .env -Force
 ollama pull llama3.2:3b
 
 # 2. Warm every Docker profile (LLM + observability + security + failover)
-docker compose -f deploy/docker/docker-compose.yml `
+docker compose --env-file .env -f deploy/docker/docker-compose.yml `
   --profile observability --profile laptop --profile security --profile failover up -d
 
-# 3. The MCP gateway fetches JWKS at boot and can race ahead of Keycloak.
-#    Wait for the realm, then restart it so it picks up JWKS cleanly.
+# 3. Compose health-gates the MCP gateway on Keycloak. This explicit readiness
+#    check is retained as a visible pre-flight assertion.
 do { Start-Sleep 3 } until (
   try { (Invoke-RestMethod "http://localhost:8080/realms/agentgateway/.well-known/openid-configuration" -TimeoutSec 3).issuer } catch { $null }
 )
-docker compose -f deploy/docker/docker-compose.yml --profile security up -d agentgateway-mcp-secure
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile security --profile observability up -d agentgateway-mcp-secure
 
 # 4. Stand up the Kubernetes promotion (kind + Helm + manifests + a warm-up call)
 kind create cluster --config deploy/kubernetes/kind/kind-cluster.yaml
@@ -201,7 +204,7 @@ Pre-flight is good when:
 Quick health snapshot:
 
 ```powershell
-docker compose -f deploy/docker/docker-compose.yml ps
+docker compose --env-file .env -f deploy/docker/docker-compose.yml ps
 ```
 
 ---
@@ -252,7 +255,7 @@ Then open in the browser and narrate:
 ### 3. M3 — MCP federation (~60s)
 
 ```powershell
-# Federation through the gateway: one endpoint, six prefixed tools
+# Federation through the gateway: one endpoint, six tenant-prefixed tools
 $op = .\tests\smoke\get-keycloak-token.ps1 -User oliver-operator -Password operator-password
 $H  = @{ Authorization = "Bearer $op"; Accept = "application/json, text/event-stream" }
 $r  = Invoke-WebRequest -Method Post "http://localhost:3002/mcp" -ContentType "application/json" -Headers $H `
@@ -261,14 +264,15 @@ $sid = ([string[]]$r.Headers["Mcp-Session-Id"])[0]
 $H2  = $H + @{ "Mcp-Session-Id" = $sid }
 $lr  = Invoke-WebRequest -Method Post "http://localhost:3002/mcp" -ContentType "application/json" -Headers $H2 `
        -Body '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' -UseBasicParsing
-(($lr.Content -replace '^data: ','' | ConvertFrom-Json).result.tools).name
+$payload = $lr.Content -split "`r?`n" | Where-Object { $_ -like 'data:*' } | ForEach-Object { $_ -replace '^data:\s?','' }
+(($payload -join "`n") | ConvertFrom-Json).result.tools.name
 ```
 
-**Expected:** six tools — `sqlite_read_incidents`, `sqlite_write_incident_note`,
-`http_read_service_health`, `http_write_restart_request`, `openapi_readTickets`,
-`openapi_writeTicket`.
+**Expected:** the six tenant-b tools — `tenant-b-sqlite_read_incidents`, `tenant-b-sqlite_write_incident_note`,
+`tenant-b-http_read_service_health`, `tenant-b-http_write_restart_request`, `tenant-b-openapi_readTickets`,
+`tenant-b-openapi_writeTicket`.
 **Talk track:** three different transports (stdio-style over HTTP, streamable HTTP, and an
-OpenAPI REST app) federated into one Virtual MCP endpoint with stable, prefixed names.
+OpenAPI REST app) federated into one Virtual MCP endpoint with tenant-prefixed names.
 
 ### 4. M4 — Security / RBAC (~75s)
 
@@ -276,9 +280,7 @@ OpenAPI REST app) federated into one Virtual MCP endpoint with stable, prefixed 
 .\tests\smoke\smoke-rbac.ps1
 ```
 
-**Expected:** 7/7 — no token → 401; `alice-reader` (tenant-a) can call read tools but is
-**denied** writes (and writes are filtered from her `tools/list`); the OpenAPI query param
-round-trips to the backend; `oliver-operator` (tenant-b) can call writes.
+**Expected:** 13 PASS checks — no token → 401; each reader sees only its tenant's read tools; direct cross-tenant calls and unauthorized writes are rejected; the tenant-b operator can write only in tenant-b.
 **Talk track:** authorization is listener-level CEL on the bare tool name. Same gateway,
 different identity, different allowed tools — least privilege, tenant-aware.
 
@@ -320,7 +322,7 @@ management, policy review, SLOs, and GitOps for the CRDs.
 
 ```powershell
 # Docker stacks
-docker compose -f deploy/docker/docker-compose.yml `
+docker compose --env-file .env -f deploy/docker/docker-compose.yml `
   --profile observability --profile laptop --profile security --profile failover down
 
 # Kubernetes
@@ -333,7 +335,7 @@ kind delete cluster --name agentgateway-secure-mcp
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `agentgateway-mcp-secure` exited (1) right after start | It fetches JWKS at boot and raced ahead of Keycloak | Re-run `docker compose ... --profile security up -d agentgateway-mcp-secure` once the realm endpoint answers (pre-flight step 3) |
+| `agentgateway-mcp-secure` exited (1) right after start | Keycloak did not become healthy before JWKS loading | Verify the checked-in health-gated Compose config, then recreate Keycloak and the gateway |
 | M2 first call returns 503 | Expected — the cold request trips the breaker on the dead primary | The smoke test primes the breaker, then asserts steady-state success on the backup |
 | `smoke-k8s.ps1 -Apply` says "Gateway not Programmed" | Status checked before the control plane finished rolling out | The script now waits for rollout + Programmed after `-Apply`; just re-run `smoke-k8s.ps1 -E2E` |
 | OpenAPI tool returns `tenant=null` | agentgateway nests OpenAPI params by location | Call with `arguments={query:{tenant:...}}`, not a flat `{tenant:...}` |

@@ -1,10 +1,5 @@
-# Minimal local values placeholder for the kind milestone.
-# Keep this file synchronized with the pinned agentgateway v1.3.1 Helm values before a production-style run.
-gateway:
-  service:
-    type: NodePort
-    ports:
-      http:
-        nodePort: 30080
-      https:
-        nodePort: 30443
+# Intentionally empty for agentgateway v1.4.0.
+# Gateway Services are created and owned by the control plane; local access uses
+# kubectl port-forward in tests/smoke/smoke-k8s.ps1.  The former gateway.service
+# block was not a v1.4.0 chart value and Helm silently ignored it.
+{}

@@ -7,7 +7,10 @@ scrape_configs:
       - targets: ["otel-collector:8889"]
   - job_name: agentgateway
     metrics_path: /metrics
-    # agentgateway serves Prometheus metrics on the stats listener (config.statsAddr),
-    # which is pinned to :15020. The admin UI/API is on :15000 and does NOT serve /metrics.
+    # Each gateway exposes Prometheus metrics on its stats listener. The admin UI/API
+    # is on :15000 and does NOT serve /metrics.
     static_configs:
-      - targets: ["host.docker.internal:15020"]
+      - targets:
+          - "host.docker.internal:15020" # M1 laptop LLM gateway
+          - "host.docker.internal:15022" # M3/M4 secure MCP gateway
+          - "host.docker.internal:15023" # M2 failover gateway

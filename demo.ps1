@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   One-click local demo launcher for the agentgateway secure-MCP platform.
-  Brings up the whole local stack, handles the Keycloak/JWKS boot race,
+  Brings up the whole local stack with health-gated Keycloak/JWKS startup,
   optionally sets up the Kubernetes promotion and runs the smoke tests,
   then prints the high-level demo steps, URLs, and credentials.
 
@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root        = $PSScriptRoot
-$Compose     = @("compose", "-f", (Join-Path $Root "deploy/docker/docker-compose.yml"))
+$Compose     = @("compose", "--env-file", (Join-Path $Root ".env"), "-f", (Join-Path $Root "deploy/docker/docker-compose.yml"))
 $Profiles    = @("--profile","observability","--profile","laptop","--profile","security","--profile","failover")
 $KindCluster = "agentgateway-secure-mcp"
 
@@ -30,6 +30,12 @@ function Ok($t)      { Write-Host "  [ok] $t" -ForegroundColor Green }
 function Warn($t)    { Write-Host "  [! ] $t" -ForegroundColor Yellow }
 function Bad($t)     { Write-Host "  [x ] $t" -ForegroundColor Red }
 function Invoke-Compose { param([string[]]$A) & docker @Compose @A }
+function Get-DotEnvValue {
+  param([string]$Path, [string]$Name)
+  $match = Get-Content -LiteralPath $Path | Where-Object { $_ -match "^\s*$([regex]::Escape($Name))\s*=\s*(.*)\s*$" } | Select-Object -First 1
+  if (-not $match) { return $null }
+  return (($match -replace "^\s*$([regex]::Escape($Name))\s*=\s*", "").Trim().Trim('"').Trim("'"))
+}
 
 Write-Host ""
 Write-Host "  agentgateway secure-MCP platform - local demo launcher" -ForegroundColor White
@@ -38,7 +44,7 @@ Write-Host "  agentgateway secure-MCP platform - local demo launcher" -Foregroun
 if ($Down) {
   Section "Tearing down"
   Step "stopping Docker profiles"
-  Invoke-Compose ($Profiles + @("down")) | Out-Null
+  Invoke-Compose ($Profiles + @("down","--remove-orphans")) | Out-Null
   Ok "Docker profiles down"
   if (kind get clusters 2>$null | Select-String -SimpleMatch $KindCluster) {
     Step "deleting kind cluster"
@@ -58,7 +64,19 @@ catch { Bad "Docker daemon not reachable - start Docker Desktop and retry"; exit
 if (-not (Test-Path (Join-Path $Root ".env"))) {
   Copy-Item (Join-Path $Root ".env.example") (Join-Path $Root ".env")
   Ok ".env created from .env.example"
-} else { Ok ".env present" }
+} else {
+  $expectedImage = Get-DotEnvValue (Join-Path $Root ".env.example") "AGENTGATEWAY_IMAGE"
+  $configuredImage = Get-DotEnvValue (Join-Path $Root ".env") "AGENTGATEWAY_IMAGE"
+  if ([string]::IsNullOrWhiteSpace($configuredImage)) {
+    Bad ".env is missing AGENTGATEWAY_IMAGE; copy the v1.4.0 value from .env.example before continuing"
+    exit 1
+  }
+  if ($configuredImage -ne $expectedImage) {
+    Bad ".env pins $configuredImage, but this repository requires $expectedImage; update .env deliberately before continuing"
+    exit 1
+  }
+  Ok ".env present and pins $configuredImage"
+}
 
 try {
   $models = (Invoke-RestMethod "http://localhost:11434/api/tags" -TimeoutSec 5).models.name
@@ -82,7 +100,7 @@ foreach ($i in 1..40) {
 }
 if ($ready) { Ok "Keycloak realm ready" } else { Warn "Keycloak not ready yet - the RBAC step may need another minute" }
 
-Step "restarting agentgateway-mcp-secure (handles the JWKS-at-boot race)"
+Step "confirming the health-gated secure MCP service is running"
 Invoke-Compose ($Profiles + @("up","-d","agentgateway-mcp-secure")) | Out-Null
 Start-Sleep 4
 Ok "secure MCP gateway running"
@@ -115,7 +133,8 @@ if ($Verify) {
   Section "Verifying milestones (smoke tests)"
   Write-Host "--- M1 LLM ---"          -ForegroundColor DarkCyan; & (Join-Path $Root "tests/smoke/smoke-llm.ps1")
   Write-Host "--- M5 observability ---" -ForegroundColor DarkCyan; & (Join-Path $Root "tests/smoke/smoke-observability.ps1")
-  Write-Host "--- M4 RBAC ---"          -ForegroundColor DarkCyan; & (Join-Path $Root "tests/smoke/smoke-rbac.ps1")
+  Write-Host "--- M3 MCP federation ---" -ForegroundColor DarkCyan; & (Join-Path $Root "tests/smoke/smoke-mcp.ps1")
+  Write-Host "--- M4 RBAC ---"           -ForegroundColor DarkCyan; & (Join-Path $Root "tests/smoke/smoke-rbac.ps1")
   Write-Host "--- M2 failover ---"      -ForegroundColor DarkCyan; & (Join-Path $Root "tests/smoke/smoke-m2.ps1")
   if ($WithKubernetes) { Write-Host "--- M6 Kubernetes ---" -ForegroundColor DarkCyan; & (Join-Path $Root "tests/smoke/smoke-k8s.ps1") -E2E }
 }
@@ -144,8 +163,8 @@ Write-Host ""
 Write-Host "  High-level demo flow (full talk track: docs/demo/DEMO.md)" -ForegroundColor White
 Write-Host "    1. M1  Standalone LLM gateway  - no key -> 401, valid key -> real completion"
 Write-Host "    2. M5  Observability           - Prometheus target UP, Grafana dashboard, Jaeger traces"
-Write-Host "    3. M3  MCP federation          - one endpoint, 6 prefixed tools (sqlite_/http_/openapi_)"
-Write-Host "    4. M4  Security / RBAC         - reader vs operator, tenant-scoped, least privilege"
+Write-Host "    3. M3  MCP federation          - one endpoint; tool menu is tenant and role scoped"
+Write-Host "    4. M4  Security / RBAC         - tenant-isolated reader and operator policy, proven by 13 checks"
 Write-Host "    5. M2  LLM failover            - dead primary -> live backup via health.eviction"
 Write-Host "    6. M6  Kubernetes promotion    - same gateway as Gateway API + agentgateway CRDs on kind"
 
@@ -153,7 +172,8 @@ Write-Host ""
 Write-Host "  Prove each milestone (smoke tests)" -ForegroundColor White
 Write-Host "    .\tests\smoke\smoke-llm.ps1            # M1"
 Write-Host "    .\tests\smoke\smoke-observability.ps1  # M5"
-Write-Host "    .\tests\smoke\smoke-rbac.ps1           # M3 + M4 (7/7)"
+Write-Host "    .\tests\smoke\smoke-mcp.ps1            # M3"
+Write-Host "    .\tests\smoke\smoke-rbac.ps1           # M4 (13 checks)"
 Write-Host "    .\tests\smoke\smoke-m2.ps1             # M2 (3/3)"
 Write-Host "    .\tests\smoke\smoke-k8s.ps1 -E2E       # M6 (needs -WithKubernetes setup)"
 

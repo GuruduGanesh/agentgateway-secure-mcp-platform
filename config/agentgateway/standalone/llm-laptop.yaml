@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://agentgateway.dev/schema/config
 # DEFAULT recording profile: lightweight, low-memory, laptop-friendly.
-# Primary model llama3.2:3b (~2 GB). Verified to load and serve through agentgateway v1.3.1.
+# Primary model llama3.2:3b (~2 GB). Verified locally with agentgateway v1.4.0.
 config:
   adminAddr: 0.0.0.0:15000
   statsAddr: 0.0.0.0:15020

@@ -20,21 +20,21 @@ Maintenance convention (**mandatory, every change**): in the *same* change that 
 
 Nothing is "done" until its work-log row says ✅ and its checklist box is `[x]`. Start a step → add a 🔄 row; finish it → flip to ✅. Never silently complete work without recording it here.
 
-Last local validation: 2026-06-28 (full M1–M6 re-run) on Windows + Docker Desktop, agentgateway `v1.3.1`, Ollama `llama3.2:3b`.
+Last local validation: 2026-08-11 (full M1–M6 re-run) on Windows + Docker Desktop, agentgateway `v1.4.0`, Ollama `llama3.2:3b`.
 
 | Milestone | State | What is true now | Next work |
 | --- | --- | --- | --- |
 | 1. Standalone Docker + Ollama | **Verified runnable** | Laptop profile (`llama3.2:3b`) loads and serves through agentgateway. Confirmed end-to-end via Compose: unauthenticated call → **401**; valid `Authorization: Bearer` → **200** with a real completion; token rate limit + `tokenize` active. | Capture the recording. |
 | 2. LLM resilience/governance | **Verified** | Failover proven end-to-end. `resilient` virtual model (`failover` routing) + per-model `health.eviction` (outlier detection) in both `llm-laptop.yaml` and the dedicated proof `llm-m2.yaml` (dead primary :11999 → live backup :11434). `smoke-m2.ps1` passes 3/3: dead primary trips the breaker on call 1, traffic fails over to the backup on call 2+; direct dead-primary call fails; no-auth → 401. | Optional: add load-balancing (weighted) + content-based routing variants. |
-| 3. MCP federation | **Verified** | All three tool servers run over HTTP (`mcp:`/`openapi:` targets) — no in-container runtime needed. Federation proven through the gateway: `initialize`, `tools/list` (6 tools, correctly prefixed `sqlite_/http_/openapi_`), and `tools/call` all work. OpenAPI query-param mapping now proven: `readTickets` round-trips `tenant` when args are nested under `query` (regression-guarded in `smoke-rbac.ps1`). | — (complete; covered with auth in M4) |
-| 4. Security/RBAC | **Verified** | JWT auth + RBAC proven end-to-end through the gateway. `smoke-rbac.ps1` passes 7/7: no-token→401; reader sees/calls only read tools (writes filtered from `tools/list` + denied on call); OpenAPI query-param round-trips to the backend; operator (tenant-b) can call writes. | Add a same-role/other-tenant user to demo cross-tenant denial explicitly. |
+| 3. MCP federation | **Verified** | The secure gateway federates six tenant-prefixed tools from tenant-scoped HTTP/OpenAPI backends. `tools/list` and `tools/call` work through the gateway; callers cannot supply a tenant argument to the backend. | — (complete; covered with auth in M4) |
+| 4. Security/RBAC | **Verified** | JWT role and tenant isolation proven end-to-end. `smoke-rbac.ps1` passes 13 checks: no-token→401; each reader sees exactly its three tenant read tools; allowed responses carry the matching backend tenant; writes and all direct cross-tenant calls are rejected; the tenant-b operator sees six tenant-b tools and can write only there. | — (complete) |
 | 5. Observability | **Verified** | After 5 authenticated LLM calls: Prometheus `agentgateway` target UP scraping `:15020` (`agentgateway_requests_total=5`); Grafana healthy with Prometheus datasource + provisioned dashboard; Jaeger shows 5 `agentgateway` traces. OTLP export works once the collector is on-network. | Eyeball Grafana panels in-browser; add MCP/token panels. |
-| 6. Kubernetes/Helm | **Verified** | kind v0.32.0 cluster up; Gateway API v1.5.0 CRDs + agentgateway v1.3.1 (CRDs + control plane) installed via Helm v4. Manifests corrected to the live `agentgateway.dev/v1alpha1` CRDs and applied: Gateway **Programmed**, AgentgatewayBackend **Accepted**, AgentgatewayPolicy **Accepted+Attached**. A real `llama3.2:3b` chat completion flows through the in-cluster gateway to host Ollama (`smoke-k8s.ps1 -E2E`). | Promote M4 auth (JWT/RBAC) + rate-limit into the `spec.traffic` policy block once a JWKS source is reachable in-cluster. |
+| 6. Kubernetes/Helm | **Verified** | kind v0.32.0 cluster up; Gateway API v1.5.0 CRDs + agentgateway v1.4.0 (CRDs + control plane) installed via Helm v4. Manifests validated against the live `agentgateway.dev/v1alpha1` CRDs and applied: Gateway **Programmed**, AgentgatewayBackend **Accepted**, AgentgatewayPolicy **Accepted+Attached**. A real `llama3.2:3b` chat completion flows through the in-cluster gateway to host Ollama (`smoke-k8s.ps1 -Apply -E2E`). | Promote M4 auth (JWT/RBAC) + rate-limit into the `spec.traffic` policy block once a JWKS source is reachable in-cluster. |
 | Blog draft | Draft added | First-person hands-on article draft exists under `docs/blog/`. | Revise with the real gotchas found in testing (distroless image, invalid top-level `admin`/`telemetry` keys, tracing schema, metrics port). |
 
 ## Config corrections applied (found by an actual gateway run)
 
-- Removed invalid top-level `admin:` / `telemetry:` keys — v1.3.1 rejects them. Moved to `config.adminAddr`, `config.statsAddr`, `config.logging.level`.
+- Removed invalid top-level `admin:` / `telemetry:` keys — v1.3.1 and v1.4.0 reject them. Moved to `config.adminAddr`, `config.statsAddr`, `config.logging.level`.
 - Fixed tracing: `frontendPolicies.tracing` (which expects a `host` backend) was crashing startup; switched to `config.tracing.otlpEndpoint`.
 - Prometheus now scrapes metrics on **:15020** (the stats listener), not the admin port :15000 (which 404s on `/metrics`).
 - `smoke-llm.ps1` now sends the demo Bearer key (strict API-key auth rejects unauthenticated calls).
@@ -42,12 +42,13 @@ Last local validation: 2026-06-28 (full M1–M6 re-run) on Windows + Docker Desk
 - `mcpAuthorization` must be at the **listener level** (`mcp.policies.mcpAuthorization`); per-target `policies` parsed into config but were not enforced.
 - In authz CEL, `mcp.tool.name` is the **bare** name (`read_incidents`), not the prefixed `tools/list` name (`sqlite_read_incidents`).
 - Keycloak: `KC_HOSTNAME` pins the issuer; users need profile fields (email/first/last) or token fails `Account is not fully set up`; an audience mapper + `mcpAuthentication.audiences` are required.
-- The MCP gateway must start **after** Keycloak is ready (it fetches JWKS at boot); restart it if it raced ahead.
-- **K8s CRD group is `agentgateway.dev`, not `gateway.agentgateway.dev`.** The skeleton manifests used the wrong group on the HTTPRoute `backendRef`, the `AgentgatewayBackend`, and the `AgentgatewayPolicy`. The live CRDs (Helm v1.3.1) are `agentgatewaybackends/policies/parameters.agentgateway.dev` (`v1alpha1`).
+- The MCP gateway must start **after** Keycloak is ready (it fetches JWKS at boot); Compose now gates it on Keycloak's health endpoint.
+- **K8s CRD group is `agentgateway.dev`, not `gateway.agentgateway.dev`.** The skeleton manifests used the wrong group on the HTTPRoute `backendRef`, the `AgentgatewayBackend`, and the `AgentgatewayPolicy`. The live CRDs (Helm v1.4.0) are `agentgatewaybackends/policies/parameters.agentgateway.dev` (`v1alpha1`).
+- **v1.4.0 MCP responses may use SSE framing.** Smoke tests must extract JSON from `data:` frames as well as accept plain JSON; otherwise successful HTTP 200 tool calls are misclassified as denied.
 - **K8s `AgentgatewayBackend` AI shape is `spec.ai.groups[].providers[]`.** Not `spec.ai.provider.openai.{host,port,path}`. Provider-level `host`/`port`/`pathPrefix` override a managed provider (used to point an `openai` provider at host Ollama `:11434` `/v1`); `openai.model` overrides the request model.
 - **K8s CORS is `spec.traffic.cors` on `AgentgatewayPolicy`.** Not `spec.policy.cors`. The `spec.traffic` block also holds `jwtAuthentication`, `rateLimit`, and `authorization` — the path to promote the standalone M4 security model into CRDs.
 - **kind has no cloud LoadBalancer.** The control plane creates a `LoadBalancer` Service per Gateway with a random NodePort; patching it to NodePort 30080 reverts. Use `kubectl port-forward svc/local-agentgateway` for host access. `host.docker.internal` *does* resolve from pods on Docker Desktop, so the in-cluster gateway reaches host Ollama directly.
-- **OpenAPI tool args are nested by parameter location.** agentgateway generates the MCP tool input schema grouping OpenAPI parameters into `query` / `path` / `body` objects. So `readTickets` (which has a `tenant` *query* param) must be called with `arguments={query:{tenant:"…"}}`. A flat `{tenant:"…"}` is silently dropped and the backend sees `null` — this was the "tenant came through null" symptom, not a gateway defect.
+- **Tenant isolation must not be caller-controlled.** The original OpenAPI `tenant` query parameter allowed any authenticated reader to request another tenant. The secure configuration now exposes separate tenant-prefixed targets backed by tenant-scoped services, and `smoke-rbac.ps1` verifies that direct cross-tenant tool calls are rejected.
 - **M2 failover needs a health policy.** `virtualModels.routing.failover` alone does **not** fail over — a dead primary just returns 503. Failover is driven by outlier detection: add `health.eviction` (e.g. `consecutiveFailures: 1`, `duration: 30s`) to the model. With it, the first failure evicts the primary and subsequent requests route to the next priority group. The `llm:` shorthand has **no in-line retry** (route-level `retry`/`FilterOrPolicy` is not exposed there), so failover is cross-request: the first cold request to a dead primary surfaces a 503, then steady-state traffic rides the backup.
 
 ## Work log (chronological)
@@ -80,6 +81,7 @@ Running journal of every work step and its state. **Append a dated entry wheneve
 | 2026-06-24 | Added Apache-2.0 `LICENSE` + README License section | ✅ done | Compliance: public repo now carries Apache-2.0 (matches upstream); states reference-only/not-a-fork. |
 | 2026-06-25 | Governance/process scaffolding removed (kept the repo demo-focused) | ✅ done | Dropped the enterprise governance/process layer (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `DEVELOPMENT.md`, `CHANGELOG.md`, `.github/`, `Makefile`, `tasks.ps1`, `tests/validate.ps1`, `.gitattributes`, `.dockerignore`, `docs/README.md`) as out of scope for a local demo. README references trimmed (folder tree, setup section, docs map, contributing). The demo runs on plain `docker compose` + `tests/smoke/`. |
 | 2026-06-28 | Full M1–M6 E2E re-verification + demo runbook rewrite | ✅ done | All six green in one session: M1 401/200 + real completion + metrics `:15020`; M5 Prom target UP (`agentgateway_requests_total`), Grafana dashboard `agentgateway Secure MCP Local Demo` + Prometheus datasource, Jaeger 7 `agentgateway` traces; M3 6 prefixed tools through the gateway; M4 `smoke-rbac.ps1` 7/7; M2 `smoke-m2.ps1` 3/3; M6 kind + Helm v1.3.1, Gateway Programmed + Backend/Policy Accepted+Attached, `smoke-k8s.ps1 -E2E` 200 through the in-cluster gateway. Confirmed the JWKS-race gotcha (mcp-secure exited → restart fixes). Rewrote `docs/demo/DEMO.md` as a verified pre-flight + on-camera runbook. Fixed `smoke-k8s.ps1` to wait for control-plane rollout + Gateway Programmed after `-Apply`. |
+| 2026-08-11 | Upgrade and full local re-validation on agentgateway v1.4.0 | ✅ done | Pinned image and Helm charts deliberately to v1.4.0, with root `.env` explicitly passed to Compose and a guard that rejects stale image pins. M1 real completion, M2 3/3 failover, M3 secure MCP federation, M4 13-check tenant-isolated RBAC, M5 observability, and M6 Helm apply plus in-cluster E2E 200 all passed. Hardened multi-line SSE parsing, Keycloak readiness, self-contained Compose profiles, telemetry startup ordering, three gateway Prometheus scrape targets, Grafana dashboard assertion, and Helm policy-status assertions. Rewrote the M3 smoke, added exact-tool RBAC assertions, corrected the demo/runbook topology, added local rollback guidance, and added `.github/workflows/validate.yml` to parse PowerShell, check Node servers, and validate every Compose profile. Historical v1.3.1 screenshots and proof text are explicitly labeled in `docs/EVIDENCE.md`; they are not v1.4.0 evidence. |
 | — | Blog draft revision with real gotchas | ⏳ open | |
 
 ## Open action items / checklist
@@ -107,14 +109,14 @@ Single source of truth for done vs. pending. `[x]` = verified locally; `[~]` = c
 
 ### Done (verified locally) — M4
 - [x] JWT auth at the MCP gateway (no-token → 401; valid Keycloak token accepted)
-- [x] RBAC allow/deny through the gateway, automated in `smoke-rbac.ps1` (7/7 pass)
+- [x] Tenant-isolated RBAC through the gateway, automated in `smoke-rbac.ps1` (13 checks)
 - [x] reader tool-list filtering (writes hidden from reader)
 - [x] Keycloak fixes: pinned issuer (`KC_HOSTNAME`), user profile fields, audience mapper + `audiences`
 
 ### Done (verified locally) — M3
-- [x] MCP federation through the gateway (no-auth): `initialize` + `tools/list` + `tools/call` for all 3 targets, prefixes confirmed
-- [x] stdio→HTTP conversion: sqlite tools served over HTTP (`sqlite-tools` container) so the distroless gateway needs no in-container runtime
-- [x] OpenAPI arg→query mapping proven: nest query params under `query` (`{query:{tenant}}`); `tenant` round-trips to the backend, regression-guarded in `smoke-rbac.ps1` (7/7)
+- [x] Authenticated MCP federation through the gateway: `initialize` + `tools/list` + `tools/call` cover all three target types, with tenant-prefixed tools
+- [x] stdio→HTTP conversion: tenant-scoped sqlite tools are served over the private Docker network so the distroless gateway needs no in-container runtime
+- [x] Tenant scope is bound to the authenticated target and backend, with direct cross-tenant negative cases regression-guarded in `smoke-rbac.ps1`
 
 ### Done (verified locally) — M2
 - [x] LLM failover via `virtualModels.resilient` + `failover` routing, proven with `smoke-m2.ps1` (3/3)
@@ -123,7 +125,7 @@ Single source of truth for done vs. pending. `[x]` = verified locally; `[~]` = c
 
 ### Done (verified locally) — M6
 - [x] kind v0.32.0 + Helm v4.2.2 installed (winget); cluster `kind-agentgateway-secure-mcp` node Ready
-- [x] Gateway API v1.5.0 CRDs + agentgateway v1.3.1 (CRDs + control plane) via Helm; control-plane pod 1/1, GatewayClass Accepted
+- [x] Gateway API v1.5.0 CRDs + agentgateway v1.4.0 (CRDs + control plane) via Helm; control-plane pod 1/1, GatewayClass Accepted
 - [x] Manifests corrected to live CRDs (group `agentgateway.dev`, `spec.ai.groups[].providers[]`, `spec.traffic.cors`) and applied: Gateway Programmed, Backend Accepted, Policy Accepted+Attached
 - [x] End-to-end `llama3.2:3b` chat completion through the in-cluster gateway (`smoke-k8s.ps1 -E2E`)
 - [ ] Promote M4 JWT/RBAC + rate-limit into `spec.traffic` policy CRDs (needs in-cluster-reachable JWKS)

@@ -2,6 +2,7 @@
 PROJECT_BRIEF.md
 A1_AgentGateway/
 A2_ComputerOrg/
+A3_AAIF/
 
 # --- Local tooling config (machine-specific, never check in) ---
 .claude/

@@ -9,6 +9,6 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/downloa
 Then install agentgateway CRDs and the control plane:
 
 ```powershell
-helm install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.3.1 -n agentgateway-system --create-namespace
-helm install agentgateway oci://cr.agentgateway.dev/charts/agentgateway --version v1.3.1 -n agentgateway-system -f deploy/kubernetes/helm/values.yaml
+helm install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.4.0 -n agentgateway-system --create-namespace
+helm install agentgateway oci://cr.agentgateway.dev/charts/agentgateway --version v1.4.0 -n agentgateway-system -f deploy/kubernetes/helm/values.yaml
 ```

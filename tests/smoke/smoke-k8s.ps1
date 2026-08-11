@@ -22,10 +22,19 @@ param(
 $ns = "agentgateway-demo"
 $sys = "agentgateway-system"
 
+function Get-ConditionStatus($kind, $name, $conditionType) {
+  $resource = kubectl -n $ns get $kind $name -o json | ConvertFrom-Json
+  $conditions = $resource.status.conditions
+  if (-not $conditions -and $resource.status.ancestors) {
+    $conditions = $resource.status.ancestors[0].conditions
+  }
+  return [string](($conditions | Where-Object { $_.type -eq $conditionType } | Select-Object -First 1).status)
+}
+
 if ($Apply) {
   kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
-  helm upgrade --install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.3.1 -n $sys --create-namespace
-  helm upgrade --install agentgateway     oci://cr.agentgateway.dev/charts/agentgateway      --version v1.3.1 -n $sys -f deploy/kubernetes/helm/values.yaml
+  helm upgrade --install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.4.0 -n $sys --create-namespace
+  helm upgrade --install agentgateway     oci://cr.agentgateway.dev/charts/agentgateway      --version v1.4.0 -n $sys -f deploy/kubernetes/helm/values.yaml
   kubectl apply -f deploy/kubernetes/manifests/
 
   # The control plane needs a moment to roll out and program the Gateway. Without
@@ -33,7 +42,7 @@ if ($Apply) {
   Write-Host "Waiting for control plane rollout + Gateway Programmed..." -ForegroundColor Cyan
   kubectl -n $sys rollout status deploy/agentgateway --timeout=180s
   foreach ($i in 1..30) {
-    $p = (kubectl -n $ns get gateway local-agentgateway -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>$null)
+    $p = Get-ConditionStatus "gateway" "local-agentgateway" "Programmed"
     if ($p -eq "True") { break }
     Start-Sleep 4
   }
@@ -45,11 +54,15 @@ kubectl get gatewayclass agentgateway
 kubectl -n $sys get pods
 kubectl -n $ns get gateway,httproute,agentgatewaybackend,agentgatewaypolicy
 
-# Assert the Gateway is Programmed and the AI backend is Accepted.
-$prog = (kubectl -n $ns get gateway local-agentgateway -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}')
-$acc  = (kubectl -n $ns get agentgatewaybackend ollama-local -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}')
-Write-Host "Gateway Programmed = $prog ; Backend Accepted = $acc"
+# Assert the Gateway is Programmed and the backend/policy are accepted.
+$prog = Get-ConditionStatus "gateway" "local-agentgateway" "Programmed"
+$acc = Get-ConditionStatus "agentgatewaybackend" "ollama-local" "Accepted"
+$policyAccepted = Get-ConditionStatus "agentgatewaypolicy" "local-security-observability" "Accepted"
+$policyAttached = Get-ConditionStatus "agentgatewaypolicy" "local-security-observability" "Attached"
+Write-Host "Gateway Programmed = $prog ; Backend Accepted = $acc ; Policy Accepted/Attached = $policyAccepted/$policyAttached"
 if ($prog -ne "True") { Write-Error "Gateway not Programmed"; exit 1 }
+if ($acc -ne "True") { Write-Error "AgentgatewayBackend not Accepted"; exit 1 }
+if ($policyAccepted -ne "True" -or $policyAttached -ne "True") { Write-Error "AgentgatewayPolicy not Accepted and Attached"; exit 1 }
 
 if ($E2E) {
   Write-Host "=== End-to-end LLM call through the cluster ===" -ForegroundColor Cyan
