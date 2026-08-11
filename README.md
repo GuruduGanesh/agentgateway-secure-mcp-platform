@@ -144,9 +144,9 @@ Why this shape:
 
 | Component | Pinned version |
 | --- | --- |
-| agentgateway image | `cr.agentgateway.dev/agentgateway:v1.3.1` |
-| agentgateway Helm chart | `oci://cr.agentgateway.dev/charts/agentgateway --version v1.3.1` |
-| agentgateway CRDs chart | `oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.3.1` |
+| agentgateway image | `cr.agentgateway.dev/agentgateway:v1.4.0` |
+| agentgateway Helm chart | `oci://cr.agentgateway.dev/charts/agentgateway --version v1.4.0` |
+| agentgateway CRDs chart | `oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.4.0` |
 | Gateway API CRDs | `v1.5.0` |
 | kind | `v0.32.0` |
 | Kubernetes target | `v1.36.x` |
@@ -208,7 +208,7 @@ ollama pull qwen2.5:7b             # optional — only for the model-aliasing de
 3. Start observability and the laptop-safe standalone gateway:
 
 ```powershell
-docker compose -f deploy/docker/docker-compose.yml --profile observability --profile laptop up -d
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile observability --profile laptop up -d
 ```
 
 4. Send one OpenAI-compatible request through agentgateway:
@@ -223,7 +223,7 @@ For a high-reasoning workstation profile:
 
 ```powershell
 ollama pull qwen3.6:35b
-docker compose -f deploy/docker/docker-compose.yml --profile observability --profile llm up -d
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile observability --profile llm up -d
 .\tests\smoke\smoke-llm.ps1 -Model enterprise-reasoning-latest
 ```
 
@@ -235,16 +235,16 @@ from-scratch runbook is [docs/SETUP.md](docs/SETUP.md).
 
 ## Current Status
 
-All six milestones are verified end-to-end locally (last full re-run 2026-06-28; agentgateway `v1.3.1`, Ollama `llama3.2:3b`).
+All six milestones are verified end-to-end locally (last full re-run 2026-08-11; agentgateway `v1.4.0`, Ollama `llama3.2:3b`).
 
 | Milestone | State | Evidence |
 | --- | --- | --- |
 | M1 Standalone Docker + Ollama | **Verified** | `smoke-llm.ps1`: no-auth → 401, valid Bearer → 200 + real completion; metrics on `:15020` |
 | M2 LLM resilience / failover | **Verified** | `smoke-m2.ps1` 3/3: dead primary trips breaker, traffic fails over to live backup via `health.eviction` |
-| M3 MCP federation | **Verified** | 6 tools federated + prefixed (`sqlite_`/`http_`/`openapi_`); `initialize`/`tools/list`/`tools/call` through the gateway |
-| M4 Security/RBAC | **Verified** | `smoke-rbac.ps1` 7/7: no-token → 401; reader limited to read tools (filtered + denied); operator writes allowed; OpenAPI query-param round-trips |
+| M3 MCP federation | **Verified** | Six tenant-scoped tools are federated per tenant; `initialize`/`tools/list`/`tools/call` run through the gateway. A reader sees three read tools; an operator sees six tools in its own tenant. |
+| M4 Security/RBAC | **Verified** | `smoke-rbac.ps1` 13/13: no-token → 401; each reader sees only its tenant's read tools; direct cross-tenant calls and writes are rejected; the operator writes only in its tenant |
 | M5 Observability | **Verified** | Prometheus target UP on `:15020` (`agentgateway_requests_total` increments), Grafana dashboard provisioned, Jaeger receives gateway traces |
-| M6 Kubernetes/Helm | **Verified** | kind + Helm v1.3.1 CRDs; Gateway Programmed, Backend Accepted, Policy Accepted+Attached; `smoke-k8s.ps1 -E2E` drives a live LLM call through the in-cluster gateway |
+| M6 Kubernetes/Helm | **Verified** | kind + Helm v1.4.0 CRDs; Gateway Programmed, Backend Accepted, Policy Accepted+Attached; `smoke-k8s.ps1 -E2E` drives a live LLM call through the in-cluster gateway |
 
 **Tracking & setup (living docs):** done-vs-pending checklist → [docs/STATUS.md](docs/STATUS.md); from-scratch local setup → [docs/SETUP.md](docs/SETUP.md).
 
@@ -253,24 +253,26 @@ All six milestones are verified end-to-end locally (last full re-run 2026-06-28;
 1. Standalone Docker + Ollama: runnable and recordable with the laptop profile (verified).
 2. LLM resilience: `resilient` virtual model with `failover` routing + `health.eviction` outlier detection; proven dead-primary → live-backup with `smoke-m2.ps1` (load-balancing/content-routing variants remain optional).
 3. MCP federation: stdio (served over HTTP), streamable HTTP, and OpenAPI targets federated behind one Virtual MCP endpoint; verified end-to-end through the gateway.
-4. Security: Keycloak realm + listener-level MCP RBAC (CEL); reader/operator allow-deny + multi-tenant claims proven with `smoke-rbac.ps1` (7/7).
+4. Security: Keycloak realm + listener-level MCP RBAC (CEL); role and tenant isolation are proven with `smoke-rbac.ps1` (13 checks). Each tenant is backed by tenant-scoped demo services, so clients cannot select another tenant through tool arguments.
 5. Observability: OTel → Prometheus/Grafana/Jaeger; gateway metrics scraped and traces received (verified).
 6. Kubernetes: kind/Helm promotion with the live agentgateway CRDs; a real LLM call flows through the in-cluster gateway (verified). Promoting M4 JWT/RBAC into `spec.traffic` CRDs remains the one open stretch item.
 
 Full runbook: [docs/demo/DEMO.md](docs/demo/DEMO.md).
-Visual proof screenshots are included in the demo runbook: [docs/demo/DEMO.md#visual-proof](docs/demo/DEMO.md#visual-proof).
+Historical visual anchors are included in the demo runbook; the current v1.4.0 proof is the executable smoke suite: [evidence status](docs/EVIDENCE.md).
 
 ## Security Model
 
 - Demo identity provider: local Keycloak realm in `config/identity/keycloak/realm-agentgateway.json`.
 - Demo users:
   - `alice-reader` / `reader-password`: tenant `tenant-a`, role `reader`.
+  - `brenda-reader` / `reader-password`: tenant `tenant-b`, role `reader`.
   - `oliver-operator` / `operator-password`: tenant `tenant-b`, role `operator`.
 - Tool access intent:
   - `reader` can call read-only tools.
-  - `operator` can call read and write tools for the same tenant.
-  - Cross-tenant requests are denied.
-- `.env`, real secrets, generated databases, logs, traces, and local artifacts are ignored.
+  - `operator` can call read and write tools when its token carries the demo operator tenant claim.
+  - Tenant scope is bound to the authenticated tool target and to a tenant-scoped backend; no caller-controlled tenant argument is accepted.
+  - An unavailable tool is filtered from discovery and rejected on `tools/call` as JSON-RPC `-32602` (`Unknown tool`), rather than an HTTP 403. The RBAC smoke test treats that specific protocol response as the policy-rejection mechanism.
+  - `.env`, real secrets, generated databases, logs, traces, and local artifacts are ignored.
 
 ## Observability
 
@@ -284,7 +286,7 @@ The local observability profile provides:
 Start it with:
 
 ```powershell
-docker compose -f deploy/docker/docker-compose.yml --profile observability up -d
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile observability up -d
 ```
 
 ## Accessing Each Component Manually
@@ -298,12 +300,10 @@ only.
 | Ollama (host) | `http://localhost:11434` | None — runs on the host, no auth | `http://localhost:11434/api/tags` lists pulled models (expect `llama3.2:3b`) |
 | LLM gateway (M1) | `http://localhost:3000/v1/chat/completions` | `Authorization: Bearer sk-demo-reader-local` | No header → 401, valid key → 200 completion |
 | Failover gateway (M2) | `http://localhost:3003/v1/chat/completions` | `Authorization: Bearer sk-demo-reader-local` | Same as M1, but routed through the `resilient` virtual model |
-| Secure MCP gateway (M3/M4) | `http://localhost:3002/mcp` | `Authorization: Bearer <JWT>` from Keycloak (see below) | `initialize` returns an `Mcp-Session-Id`, `tools/list` returns 6 prefixed tools |
+| Secure MCP gateway (M3/M4) | `http://localhost:3002/mcp` | `Authorization: Bearer <JWT>` from Keycloak (see below) | `initialize` returns an `Mcp-Session-Id`; `tools/list` is tenant and role scoped (reader: 3 read tools, operator: 6 tools) |
 | Gateway admin UI | `http://localhost:15000` | None | Live config/listeners (no `/metrics` here) |
 | Gateway metrics | `http://localhost:15020/metrics` | None | `agentgateway_*` Prometheus metrics (this is what Prometheus scrapes) |
-| sqlite-tools server | `http://localhost:7003/healthz` | None — internal tool server | `ok`, and `/mcp` speaks MCP |
-| http-tools server | `http://localhost:7001/healthz` | None — internal tool server | `ok`, and `/mcp` speaks MCP |
-| openapi-app server | `http://localhost:7002/openapi.yaml` | None — internal tool server | OpenAPI spec, and `/tickets` returns sample data |
+| Tenant-scoped MCP backends | Docker network only | Not externally published | Verify through the secure MCP gateway with `smoke-mcp.ps1`; host access would bypass gateway policy |
 | Keycloak admin console | `http://localhost:8080` | `admin` / `admin` | Realm `agentgateway`, users `alice-reader` and `oliver-operator` |
 | Prometheus | `http://localhost:9090` | None | **Status ▸ Targets** → the `agentgateway` target is **UP**, query `agentgateway_requests_total` |
 | Grafana | `http://localhost:3001` | `admin` / `admin` | Dashboard **agentgateway Secure MCP Local Demo**, Prometheus datasource |
@@ -352,8 +352,8 @@ The Kubernetes milestone uses kind. Install order matters:
 
 ```powershell
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
-helm install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.3.1 -n agentgateway-system --create-namespace
-helm install agentgateway oci://cr.agentgateway.dev/charts/agentgateway --version v1.3.1 -n agentgateway-system -f deploy/kubernetes/helm/values.yaml
+helm install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --version v1.4.0 -n agentgateway-system --create-namespace
+helm install agentgateway oci://cr.agentgateway.dev/charts/agentgateway --version v1.4.0 -n agentgateway-system -f deploy/kubernetes/helm/values.yaml
 kubectl apply -f deploy/kubernetes/manifests/
 ```
 

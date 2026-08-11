@@ -7,24 +7,22 @@
 import http from "node:http";
 
 const port = Number(process.env.SQLITE_TOOLS_PORT ?? 7003);
+const tenant = process.env.TENANT_SCOPE;
+if (!tenant) throw new Error("TENANT_SCOPE is required for tenant-scoped MCP tools");
 
 const tools = [
   {
     name: "read_incidents",
-    description: "Read demo incident rows for the caller tenant.",
-    inputSchema: {
-      type: "object",
-      properties: { tenant: { type: "string" } },
-      required: ["tenant"]
-    }
+    description: "Read demo incident rows for this target's tenant scope.",
+    inputSchema: { type: "object", properties: {} }
   },
   {
     name: "write_incident_note",
-    description: "Append a demo operator note for the caller tenant.",
+    description: "Append a demo operator note for this target's tenant scope.",
     inputSchema: {
       type: "object",
-      properties: { tenant: { type: "string" }, note: { type: "string" } },
-      required: ["tenant", "note"]
+      properties: { note: { type: "string" } },
+      required: ["note"]
     }
   }
 ];
@@ -78,7 +76,7 @@ const server = http.createServer(async (req, res) => {
         id,
         result: {
           content: [{ type: "text", text: JSON.stringify({
-            tenant: params.arguments?.tenant,
+            tenant,
             incidents: [
               { id: "INC-1001", severity: "sev2", service: "payments", status: "investigating" },
               { id: "INC-1002", severity: "sev3", service: "search", status: "monitoring" }
@@ -94,7 +92,7 @@ const server = http.createServer(async (req, res) => {
         id,
         result: {
           content: [{ type: "text", text: JSON.stringify({
-            tenant: params.arguments?.tenant,
+            tenant,
             accepted: true,
             note: params.arguments?.note
           }) }]

@@ -11,11 +11,11 @@
 ## Common Commands
 
 ```powershell
-docker compose -f deploy/docker/docker-compose.yml --profile observability --profile laptop up -d
-docker compose -f deploy/docker/docker-compose.yml --profile observability --profile llm up -d
-docker compose -f deploy/docker/docker-compose.yml --profile security up -d
-docker compose -f deploy/docker/docker-compose.yml --profile observability up -d
-docker compose -f deploy/docker/docker-compose.yml down
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile observability --profile laptop up -d
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile observability --profile llm up -d
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile security --profile observability up -d
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile observability up -d
+docker compose --env-file .env -f deploy/docker/docker-compose.yml down
 ```
 
 ## Validation
@@ -26,7 +26,7 @@ Smoke tests live in `tests/smoke/`:
 .\tests\smoke\smoke-llm.ps1            # M1 LLM gateway
 .\tests\smoke\smoke-m2.ps1             # M2 failover
 .\tests\smoke\smoke-mcp.ps1            # M3 MCP servers (direct)
-.\tests\smoke\smoke-rbac.ps1           # M3 + M4 through the gateway (7/7)
+.\tests\smoke\smoke-rbac.ps1           # M3 + M4 through the gateway (13 checks)
 .\tests\smoke\smoke-observability.ps1  # M5 metrics + traces
 .\tests\smoke\smoke-k8s.ps1 -E2E       # M6 Kubernetes (needs the kind cluster)
 ```

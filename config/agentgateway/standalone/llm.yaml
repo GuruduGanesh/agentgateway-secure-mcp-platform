@@ -3,7 +3,7 @@
 # These models are very large and will NOT run on an ordinary laptop:
 #   qwen3.6:35b (~24 GB), gpt-oss:120b (huge), deepseek-r1:671b (~404 GB).
 # The default, recordable profile is llm-laptop.yaml (llama3.2:3b). Use this file
-# only on serious local hardware. Structure validated against agentgateway v1.3.1.
+# only on serious local hardware. Structure validated with agentgateway v1.4.0.
 config:
   adminAddr: 0.0.0.0:15000
   statsAddr: 0.0.0.0:15020

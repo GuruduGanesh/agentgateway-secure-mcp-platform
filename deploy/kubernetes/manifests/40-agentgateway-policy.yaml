@@ -1,5 +1,5 @@
 # AgentgatewayPolicy — demo traffic policy (CORS) on the LLM route.
-# Validated against the live v1.3.1 CRD (group agentgateway.dev/v1alpha1):
+# Validated against the live v1.4.0 CRD (group agentgateway.dev/v1alpha1):
 # CORS lives under spec.traffic.cors (not spec.policy.cors). The traffic block
 # is also where jwtAuthentication, rateLimit, and authorization would go to
 # promote the standalone M4 security model into CRDs.

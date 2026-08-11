@@ -98,6 +98,26 @@
         }
       ],
       "realmRoles": ["operator"]
+    },
+    {
+      "username": "brenda-reader",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Brenda",
+      "lastName": "Reader",
+      "email": "brenda-reader@example.local",
+      "requiredActions": [],
+      "attributes": {
+        "tenant": ["tenant-b"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "reader-password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["reader"]
     }
   ]
 }

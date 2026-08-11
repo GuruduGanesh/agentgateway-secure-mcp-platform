@@ -2,7 +2,7 @@ name: agentgateway-secure-mcp
 
 services:
   agentgateway-llm-laptop:
-    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.4.0}
     command:
       - -f
       - /etc/agentgateway/config.llm.yaml
@@ -14,11 +14,14 @@ services:
       - ../../config/agentgateway/standalone/llm-laptop.yaml:/etc/agentgateway/config.llm.yaml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      otel-collector:
+        condition: service_started
     profiles: ["laptop"]
 
   # M2 failover test: ollama-primary is dead (port 11999), backup is real Ollama.
   agentgateway-llm-m2:
-    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.4.0}
     command:
       - -f
       - /etc/agentgateway/config.llm.yaml
@@ -33,7 +36,8 @@ services:
     profiles: ["failover"]
 
   agentgateway-llm:
-    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    # Alternative to agentgateway-llm-laptop; both publish the same host ports.
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.4.0}
     command:
       - -f
       - /etc/agentgateway/config.llm.yaml
@@ -45,10 +49,13 @@ services:
       - ../../config/agentgateway/standalone/llm.yaml:/etc/agentgateway/config.llm.yaml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      otel-collector:
+        condition: service_started
     profiles: ["llm"]
 
   agentgateway-mcp-secure:
-    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.3.1}
+    image: ${AGENTGATEWAY_IMAGE:-cr.agentgateway.dev/agentgateway:v1.4.0}
     command:
       - -f
       - /etc/agentgateway/config.mcp-secure.yaml
@@ -63,41 +70,82 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       keycloak:
+        condition: service_healthy
+      sqlite-tools-tenant-a:
         condition: service_started
-      sqlite-tools:
+      sqlite-tools-tenant-b:
         condition: service_started
-      http-tools:
+      http-tools-tenant-a:
         condition: service_started
-      openapi-app:
+      http-tools-tenant-b:
+        condition: service_started
+      openapi-app-tenant-a:
+        condition: service_started
+      openapi-app-tenant-b:
+        condition: service_started
+      otel-collector:
         condition: service_started
     profiles: ["mcp", "security"]
 
-  sqlite-tools:
+  sqlite-tools-tenant-a:
     image: node:22-alpine
     working_dir: /workspace/examples/mcp-servers
     command: ["node", "sqlite-tools/server.js"]
-    ports:
-      - "7003:7003"
+    environment:
+      TENANT_SCOPE: tenant-a
     volumes:
       - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
     profiles: ["mcp", "security"]
 
-  http-tools:
+  sqlite-tools-tenant-b:
+    image: node:22-alpine
+    working_dir: /workspace/examples/mcp-servers
+    command: ["node", "sqlite-tools/server.js"]
+    environment:
+      SQLITE_TOOLS_PORT: 7013
+      TENANT_SCOPE: tenant-b
+    volumes:
+      - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
+    profiles: ["mcp", "security"]
+
+  http-tools-tenant-a:
     image: node:22-alpine
     working_dir: /workspace/examples/mcp-servers
     command: ["node", "http-tools/server.js"]
-    ports:
-      - "7001:7001"
+    environment:
+      TENANT_SCOPE: tenant-a
     volumes:
       - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
     profiles: ["mcp", "security"]
 
-  openapi-app:
+  http-tools-tenant-b:
+    image: node:22-alpine
+    working_dir: /workspace/examples/mcp-servers
+    command: ["node", "http-tools/server.js"]
+    environment:
+      HTTP_TOOLS_PORT: 7011
+      TENANT_SCOPE: tenant-b
+    volumes:
+      - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
+    profiles: ["mcp", "security"]
+
+  openapi-app-tenant-a:
     image: node:22-alpine
     working_dir: /workspace/examples/mcp-servers
     command: ["node", "openapi-app/server.js"]
-    ports:
-      - "7002:7002"
+    environment:
+      TENANT_SCOPE: tenant-a
+    volumes:
+      - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
+    profiles: ["mcp", "security"]
+
+  openapi-app-tenant-b:
+    image: node:22-alpine
+    working_dir: /workspace/examples/mcp-servers
+    command: ["node", "openapi-app/server.js"]
+    environment:
+      OPENAPI_APP_PORT: 7012
+      TENANT_SCOPE: tenant-b
     volumes:
       - ../../examples/mcp-servers:/workspace/examples/mcp-servers:ro
     profiles: ["mcp", "security"]
@@ -116,11 +164,18 @@ services:
       KC_HOSTNAME: http://keycloak:8080
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     volumes:
       - ../../config/identity/keycloak/realm-agentgateway.json:/opt/keycloak/data/import/realm-agentgateway.json:ro
-    profiles: ["security"]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; IFS= read -r status <&3; test \"$${status#* 200 }\" != \"$$status\""]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 10s
+    profiles: ["mcp", "security"]
 
   otel-collector:
     image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.154.0}
@@ -133,7 +188,7 @@ services:
       - ../../config/observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     depends_on:
       - jaeger
-    profiles: ["observability"]
+    profiles: ["observability", "laptop", "llm", "mcp", "security"]
 
   prometheus:
     image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.12.0}
@@ -162,4 +217,4 @@ services:
     ports:
       - "16686:16686"
       - "4319:4317"
-    profiles: ["observability"]
+    profiles: ["observability", "laptop", "llm", "mcp", "security"]

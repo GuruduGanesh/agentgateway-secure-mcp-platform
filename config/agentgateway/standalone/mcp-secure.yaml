@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://agentgateway.dev/schema/config
-# Virtual MCP + JWT auth + per-target tool authorization.
-# Structure validated against agentgateway v1.3.1 docs.
+# Virtual MCP + JWT auth + tenant-scoped, listener-level tool authorization.
+# Verified locally with agentgateway v1.4.0; results are tracked in docs/STATUS.md.
 #
 # All three targets are HTTP-based `mcp:`/`openapi:` targets so the distroless
 # gateway image never needs an in-container runtime. Federation (initialize,
@@ -42,22 +42,36 @@ mcp:
     # Listener-level tool authorization (allow-rules; default deny).
     # NOTE: in the authz CEL context `mcp.tool.name` is the BARE tool name
     # (e.g. read_incidents), NOT the target-prefixed name shown in tools/list
-    # (sqlite_read_incidents). Use `mcp.target` to scope by target if needed.
-    #  - reader: only the read tools across all targets
-    #  - operator: any tool, but only for its own tenant (tenant-b)
+    # (sqlite_read_incidents). Use `mcp.tool.target` to scope by target.
+    # Each target is tenant-scoped and each backing service enforces that scope;
+    # clients never supply a tenant argument. This makes identity-to-resource
+    # isolation enforceable at both the gateway and backend boundaries.
+    #  - reader: read-only tools from its own tenant targets
+    #  - operator: read/write tools from its own tenant targets
     mcpAuthorization:
       rules:
-      - 'has(jwt.roles) && "reader" in jwt.roles && mcp.tool.name in ["read_incidents", "read_service_health", "readTickets"]'
-      - 'has(jwt.roles) && "operator" in jwt.roles && jwt.tenant == "tenant-b"'
+      - 'has(jwt.roles) && "reader" in jwt.roles && ((jwt.tenant == "tenant-a" && mcp.tool.target.startsWith("tenant-a-")) || (jwt.tenant == "tenant-b" && mcp.tool.target.startsWith("tenant-b-"))) && mcp.tool.name in ["read_incidents", "read_service_health", "readTickets"]'
+      - 'has(jwt.roles) && "operator" in jwt.roles && ((jwt.tenant == "tenant-a" && mcp.tool.target.startsWith("tenant-a-")) || (jwt.tenant == "tenant-b" && mcp.tool.target.startsWith("tenant-b-")))'
   targets:
-  - name: sqlite
+  - name: tenant-a-sqlite
     mcp:
-      host: http://sqlite-tools:7003/mcp/
-  - name: http
+      host: http://sqlite-tools-tenant-a:7003/mcp/
+  - name: tenant-b-sqlite
     mcp:
-      host: http://http-tools:7001/mcp/
-  - name: openapi
+      host: http://sqlite-tools-tenant-b:7013/mcp/
+  - name: tenant-a-http
+    mcp:
+      host: http://http-tools-tenant-a:7001/mcp/
+  - name: tenant-b-http
+    mcp:
+      host: http://http-tools-tenant-b:7011/mcp/
+  - name: tenant-a-openapi
     openapi:
       schema:
-        url: http://openapi-app:7002/openapi.yaml
-      host: openapi-app:7002
+        url: http://openapi-app-tenant-a:7002/openapi.yaml
+      host: openapi-app-tenant-a:7002
+  - name: tenant-b-openapi
+    openapi:
+      schema:
+        url: http://openapi-app-tenant-b:7012/openapi.yaml
+      host: openapi-app-tenant-b:7012

@@ -1,6 +1,8 @@
 import http from "node:http";
 
 const port = Number(process.env.OPENAPI_APP_PORT ?? 7002);
+const tenant = process.env.TENANT_SCOPE;
+if (!tenant) throw new Error("TENANT_SCOPE is required for tenant-scoped OpenAPI app");
 
 const openapi = `openapi: 3.0.3
 info:
@@ -12,12 +14,6 @@ paths:
   /tickets:
     get:
       operationId: readTickets
-      parameters:
-        - in: query
-          name: tenant
-          required: true
-          schema:
-            type: string
       responses:
         '200':
           description: Demo tickets
@@ -29,10 +25,8 @@ paths:
           application/json:
             schema:
               type: object
-              required: [tenant, message]
+              required: [message]
               properties:
-                tenant:
-                  type: string
                 message:
                   type: string
       responses:
@@ -65,7 +59,6 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/tickets") {
-    const tenant = url.searchParams.get("tenant");
     send(res, 200, {
       tenant,
       tickets: [
@@ -78,7 +71,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/tickets") {
     const body = await readBody(req);
-    send(res, 200, { id: "TCK-999", tenant: body.tenant, message: body.message, created: true });
+    send(res, 200, { id: "TCK-999", tenant, message: body.message, created: true });
     return;
   }
 

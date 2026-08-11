@@ -1,5 +1,5 @@
 # AgentgatewayBackend — host Ollama (OpenAI-compatible) as an LLM backend.
-# Validated against the live v1.3.1 CRD (group agentgateway.dev/v1alpha1):
+# Validated against the live v1.4.0 CRD (group agentgateway.dev/v1alpha1):
 # spec.ai uses groups[].providers[]; host/port/pathPrefix override the managed
 # provider default, and `openai.model` overrides the request model.
 apiVersion: agentgateway.dev/v1alpha1
